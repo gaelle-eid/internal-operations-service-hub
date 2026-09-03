@@ -3,11 +3,18 @@
 ## Domain
 
 **Entities:**
-- User : an employee, department staff member, department admin, or system admin. Has a name, email, and role
+- User : an employee, department staff member, department admin, or system admin. 
 - Department : IT, HR, or Finance 
-- Request : this belongs to one department, has a title, description, category, priority, and current status
+- Request : this belongs to one department
 - Comment : a message on a request's thread, written by either the requester or a resolver
 - StatusHistory : a log entry recording a status change on a request.
+
+**Attributes:**
+- User: `id`, `name`, `email`, `role` (employee / department staff / department admin / system admin), `department_id` (nullable ,set for staff/admin, empty for employees)
+- Department: `id`, `name` (IT / HR / Finance)
+- Request: `id`, `title`, `description`, `category`, `priority`, `status`, `department_id`, `created_by` (User), `assigned_to` (User, nullable), `created_at`
+- Comment: `id`, `request_id`, `author_id` (User), `body`, `created_at`
+- StatusHistory: `id`, `request_id`, `from_status`, `to_status`, `changed_by` (User), `changed_at`
 
 **Relationships, cardinality, ownership:**
 - A USER belongs to one DEPARTMENT , A DEPARTMENT has many USERS (1-N)
@@ -34,7 +41,7 @@
 
 ## Storage
 
-**Relational reasoning**: Department → Requests, User → Requests, Request → Comments/History. Foreign keys naturally enforce "a request belongs to exactly one department" and make department-isolation checks straightforward at the query level.
+**Relational reasoning**: Department → Requests, User → Requests, Request → Comments/History. Foreign keys naturally enforce "a request belongs to exactly one department" and make department-isolation checks straightforward at the query level. We chose a relational database over a document database for this reason — see `decisions/ADR-001.md` for the full comparison. Specifically, we chose **PostgreSQL**: it's free and open-source, has strong constraint/referential-integrity support (important since department isolation and audit integrity both lean on foreign keys), and supports JSON columns if we ever need flexible fields later without giving up enforced structure elsewhere.
 
 **Durable vs derived:**
 - Durable (source of truth, never overwritten): Request core fields, Comment entries, StatusHistory entries.
