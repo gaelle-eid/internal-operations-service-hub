@@ -13,7 +13,7 @@ Employees, department staff and admin, system admin
 # fctional requirements
 - Employees can submit a request and can view the status and history of their own requests
 - Department staff can view, claim, and update requests assigned to their department
-- Requests have a defined status lifecycle
+- Requests have a defined status lifecycle: Submitted → Assigned → In Progress → Waiting on Requester → Resolved → Closed
 - Requests can be commented on by both requester and resolver (a visible thread)
 - Requests can be reassigned between staff within a department, or given to a manager
 - Employees receive notifications on status changes and new comments
@@ -42,7 +42,8 @@ Employees, department staff and admin, system admin
 
 # acceptance criteria
 - An employee submits a request to IT; it appears in the IT queue as "Submitted" and the employee sees it as "Submitted" in their own list.
-- An IT staff member claims the request; its status changes to "In Progress" and the employee is notified.
+- An IT staff member claims the request; its status changes to "Assigned" and the employee is notified.
+- The IT staff member starts working on it; its status changes to "In Progress" and the employee is notified.
 - The requester adds a comment asking a question; the resolver sees it and can reply in the same thread.
 - The resolver marks the request "Resolved"; the requester can see the resolution and, if unsatisfied, can reopen or comment before it's "Closed."
 - An HR staff member cannot see or act on a request submitted to IT.
