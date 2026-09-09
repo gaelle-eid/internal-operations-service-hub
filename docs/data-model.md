@@ -3,18 +3,18 @@
 ## Domain
 
 **Entities:**
-- User : an employee, department staff member, department admin, or system admin. 
+- User : an employee, department staff member, department admin, or system admin. Has a name, email, and role
 - Department : IT, HR, or Finance 
-- Request : this belongs to one department
+- Request : this belongs to one department, has a title, description, category, priority, and current status
 - Comment : a message on a request's thread, written by either the requester or a resolver
 - StatusHistory : a log entry recording a status change on a request.
 
 **Attributes:**
-- User: `id`, `name`, `email`, `role` (employee / department staff / department admin / system admin), `department_id` (nullable ,set for staff/admin, empty for employees)
-- Department: `id`, `name` (IT / HR / Finance)
-- Request: `id`, `title`, `description`, `category`, `priority`, `status`, `department_id`, `created_by` (User), `assigned_to` (User, nullable), `created_at`
-- Comment: `id`, `request_id`, `author_id` (User), `body`, `created_at`
-- StatusHistory: `id`, `request_id`, `from_status`, `to_status`, `changed_by` (User), `changed_at`
+- **User**: `id`, `name`, `email`, `role` (employee / department staff / department admin / system admin), `department_id` (nullable — set for staff/admin, empty for employees)
+- **Department**: `id`, `name` (IT / HR / Finance)
+- **Request**: `id`, `title`, `description`, `category`, `priority`, `status`, `department_id`, `created_by` (User), `assigned_to` (User, nullable), `created_at`
+- **Comment**: `id`, `request_id`, `author_id` (User), `body`, `created_at`
+- **StatusHistory**: `id`, `request_id`, `from_status`, `to_status`, `changed_by` (User), `changed_at`
 
 **Relationships, cardinality, ownership:**
 - A USER belongs to one DEPARTMENT , A DEPARTMENT has many USERS (1-N)
@@ -26,7 +26,7 @@
 
 ## Lifecycle + rules
 
-**Status lifecycle:** Submitted → In Progress → Waiting on Requester → Resolved → Closed, with Resolved able to reopen back to In Progress if the requester isn't satisfied (per the acceptance criteria in product-spec.md).
+**Status lifecycle:** Submitted → Assigned → In Progress → Waiting on Requester → Resolved → Closed, with Resolved able to reopen back to In Progress if the requester isn't satisfied (per the acceptance criteria in product-spec.md). "Assigned" marks a staff member claiming the request; "In Progress" marks them actively working on it — these are tracked as separate steps so claim time and work time can be distinguished.
 
 **Invariants:**
 - A Request always belongs to exactly one Department , it never moves between departments (per the "one request maps to one department" assumption).
