@@ -1,8 +1,89 @@
 # Internal Operations Service Hub
 
-A company-internal system for requesting and tracking help from departments such as IT, HR, and Finance. Employees submit requests to the right department, follow their status, and communicate with whoever is resolving them , this replaces scattered emails, chat messages, and hallway conversations.
+v0.3 is a narrow full-stack Service Request flow: a React frontend, a NestJS API, and TypeORM persistence in SQLite. Employees submit and track requests; department staff can claim requests in their own department. The API owns validation, authorization, lifecycle rules, and append-only status history.
 
-**Status:** v0.1 — Product Foundation. This repository defines the problem, architecture, and data model. No implementation yet.
+## Repository
+
+```text
+backend/   NestJS API, TypeORM entities, SQLite database, unit/integration/E2E tests
+frontend/  React + Vite request dashboard
+docs/      product, architecture, data model, workflow, and v0.3 delivery contract
+decisions/ architecture decision records
+```
+
+## Prerequisites
+
+Node.js 20+ and npm.
+
+## Install and run
+
+Start the API:
+
+```bash
+cd backend
+npm install
+npm run start:dev
+```
+
+The API runs at `http://localhost:3000` and creates `backend/service-hub.sqlite` automatically. Set `DB_PATH` to change the database location.
+
+In a second terminal, start the web app:
+
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
+Open the Vite URL, normally `http://localhost:5173`. Use **New request** to submit a request. The list and detail panel are backed by the API, not browser-only state.
+
+## API contract
+
+The API uses explicit identity headers for this slice:
+
+```text
+x-user-id       actor identifier
+x-user-role     employee | staff | admin
+x-department-id required for staff/admin requests
+```
+
+Endpoints:
+
+| Method | Path | Purpose |
+|---|---|---|
+| POST | `/requests` | Validate and persist a request as `SUBMITTED` |
+| GET | `/requests` | Employee's own requests or staff department queue |
+| GET | `/requests/:id` | Read one authorized request |
+| GET | `/requests/:id/history` | Read append-only status history |
+| PATCH | `/requests/:id/status` | Apply `SUBMITTED -> ASSIGNED -> IN_PROGRESS` |
+
+Example submission:
+
+```bash
+curl -X POST http://localhost:3000/requests -H "Content-Type: application/json" -H "x-user-id: employee-1" -H "x-user-role: employee" -d "{\"title\":\"Laptop issue\",\"description\":\"It will not boot\",\"category\":\"Hardware\",\"priority\":\"High\",\"departmentId\":\"IT\",\"createdBy\":\"employee-1\"}"
+```
+
+For the complete request/response contract, authorization rule, and intentional failures, read [docs/week3-full-stack-delivery.md](docs/week3-full-stack-delivery.md).
+
+## Tests and builds
+
+```bash
+cd backend
+npm test                 # business rule + SQLite persistence integration
+npm run test:e2e         # HTTP E2E flow, authorization, invalid input
+npm run build            # NestJS production build
+
+cd ../frontend
+npm run build            # React/Vite production build
+```
+
+The automated coverage includes one allowed authorization case, one denied cross-department case, invalid request rejection, expected `401/403/404/400` failures, a business-rule test, a database integration test, an E2E test, and regression protection for the original lifecycle transitions.
+
+## Product context
+
+See [docs/product-spec.md](docs/product-spec.md), [docs/architecture.md](docs/architecture.md), [docs/data-model.md](docs/data-model.md), and [docs/workflow.md](docs/workflow.md).
+
+Author: Gaelle — AI Academy 2026
 # Internal Operations Service Hub
 
 A company-internal system for requesting and tracking help from departments such as IT, HR, and Finance. Employees submit requests to the right department, follow their status, and communicate with whoever is resolving them — replacing scattered emails, chat messages, and hallway conversations.
