@@ -7,6 +7,7 @@
     "start:dev": "nest start --watch",
     "build": "nest build",
     "test": "jest --runInBand",
+    "test:eval": "jest --runInBand intake.eval.spec.ts",
     "test:watch": "jest --watch",
     "test:e2e": "jest --config ./test/jest-e2e.json --runInBand"
   },
@@ -17,6 +18,7 @@
     "@nestjs/typeorm": "^10.0.2",
     "class-transformer": "^0.5.1",
     "class-validator": "^0.14.1",
+    "dotenv": "^16.4.7",
     "reflect-metadata": "^0.2.0",
     "rxjs": "^7.8.0",
     "sqlite3": "^5.1.7",

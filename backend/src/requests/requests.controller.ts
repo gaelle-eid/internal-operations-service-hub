@@ -2,10 +2,28 @@ import { Body, Controller, Get, Headers, Param, Patch, Post, UnauthorizedExcepti
 import { RequestActor, RequestsService } from './requests.service';
 import { CreateRequestDto } from './dto/create-request.dto';
 import { TransitionRequestDto } from './dto/transition-request.dto';
+import { IntakeRequestDto } from './dto/intake-request.dto';
+import { IntakeService } from './intake/intake.service';
+import { AgentRequestDto } from './dto/agent-request.dto';
+import { AgentService } from './agent.service';
 
 @Controller('requests')
 export class RequestsController {
-  constructor(private readonly requestsService: RequestsService) {}
+  constructor(
+    private readonly requestsService: RequestsService,
+    private readonly intakeService: IntakeService,
+    private readonly agentService: AgentService,
+  ) {}
+
+  @Post('intake')
+  intake(@Body() dto: IntakeRequestDto) {
+    return this.intakeService.classify(dto.text, dto.trustedContext?.departmentId);
+  }
+
+  @Post('agent')
+  agent(@Body() dto: AgentRequestDto, @Headers() headers: Record<string, string>) {
+    return this.agentService.respond(dto.message, this.actor(headers), dto.requestId);
+  }
 
   // Submits a new request. Always starts at SUBMITTED (docs/product-spec.md).
   @Post()

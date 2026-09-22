@@ -67,6 +67,13 @@ export class RequestsService {
     return this.requestRepository.find({ where: { departmentId: actor.departmentId }, order: { createdAt: 'DESC' } });
   }
 
+  async findByTitleAndDate(title: string, date: string, actor: RequestActor): Promise<RequestEntity[]> {
+    const requests = await this.findAll(actor);
+    const normalizedTitle = title.trim().toLowerCase();
+    return requests.filter((request) => request.title.toLowerCase().includes(normalizedTitle)
+      && request.createdAt.toISOString().slice(0, 10) === date);
+  }
+
   async findOne(id: string, actor?: RequestActor): Promise<RequestEntity> {
     const request = await this.requestRepository.findOne({ where: { id } });
     if (!request) {
