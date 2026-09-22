@@ -1,13 +1,13 @@
 # Internal Operations Service Hub
 
-v0.3 is a narrow full-stack Service Request flow: a React frontend, a NestJS API, and TypeORM persistence in SQLite. Employees submit and track requests; department staff can claim requests in their own department. The API owns validation, authorization, lifecycle rules, and append-only status history.
+v0.4 is a full-stack internal Service Request flow with Requesty-powered advisory intake and a read-only assistant. Employees can turn free text into a bounded candidate, review it, submit the request, and ask about an accessible request by selected context or name and date. The backend owns validation, authorization, lifecycle rules, and append-only status history.
 
 ## Repository
 
 ```text
-backend/   NestJS API, TypeORM entities, SQLite database, unit/integration/E2E tests
-frontend/  React + Vite request dashboard
-docs/      product, architecture, data model, workflow, and v0.3 delivery contract
+backend/   NestJS API, TypeORM persistence in SQLite, tests, and Requesty integration
+frontend/  React + Vite request dashboard and global assistant
+docs/      product, architecture, data model, workflow, and delivery documentation
 decisions/ architecture decision records
 ```
 
@@ -15,31 +15,111 @@ decisions/ architecture decision records
 
 Node.js 20+ and npm.
 
+## Configure Requesty
+
+Put the real Requesty configuration in `backend/.env`:
+
+```env
+REQUESTY_API_KEY=your-requesty-key
+REQUESTY_MODEL=google/gemma-4-31b-it
+REQUESTY_BASE_URL=https://router.requesty.ai/v1/chat/completions
+```
+
+The backend uses Requesty only. Never put the real key in Markdown, source code, or a committed file.
+
 ## Install and run
 
 Start the API:
 
-```bash
+```powershell
 cd backend
 npm install
 npm run start:dev
 ```
 
-The API runs at `http://localhost:3000` and creates `backend/service-hub.sqlite` automatically. Set `DB_PATH` to change the database location.
+The API runs at `http://localhost:3000` and creates `backend/service-hub.sqlite` automatically.
 
 In a second terminal, start the web app:
 
-```bash
+```powershell
 cd frontend
 npm install
 npm run dev
 ```
 
-Open the Vite URL, normally `http://localhost:5173`. Use **New request** to submit a request. The list and detail panel are backed by the API, not browser-only state.
+Open `http://localhost:5173/`. The global **Requesty assistant** is visible without selecting a request.
+
+## Browser verification scenarios
+
+Use **New request**, **Suggest fields**, and **Ask assistant**. Compare the browser result with the expected result below.
+
+1. **Clear IT intake**
+   - Input: `My laptop will not boot and I cannot work.`
+   - Action: Click **Suggest fields**.
+   - Expected: Requesty suggests IT, Hardware, and High priority. The fields are editable and nothing is submitted until **Submit request**.
+
+2. **HR intake**
+   - Input: `My payroll is incorrect on this month's payslip.`
+   - Action: Click **Suggest fields**.
+   - Expected: Requesty suggests HR and People with a bounded priority.
+
+3. **Finance intake**
+   - Input: `I need help paying an invoice for a software supplier.`
+   - Action: Click **Suggest fields**.
+   - Expected: Requesty suggests Finance. The backend rejects categories, priorities, or departments outside the product-owned values.
+
+4. **Ambiguous intake**
+   - Input: `Something is wrong and I need help.`
+   - Action: Click **Suggest fields**.
+   - Expected: The assistant asks for clarification or reports that the department is unclear. It must not silently guess.
+
+5. **Status by name and date**
+   - Input: `What is the status of "Requesty live name date" created on 2026-09-22?`
+   - Action: Click **Ask assistant** without selecting a request.
+   - Expected: The assistant finds the matching accessible request and reports its status without asking for the long request ID.
+
+6. **Provider or output failure**
+   - Action: Stop Requesty or use an invalid provider response in a test setup, then click **Suggest fields** or **Ask assistant**.
+   - Expected: The UI shows an unavailable or invalid-output message. No unvalidated AI result is submitted, and the normal form remains available.
+
+The assistant is advisory. Software and human authority remain final.
+
+## AI chatbot testing
+
+The chatbot is the global **Requesty assistant** panel below the request workspace. It is visible even when no request is selected. The browser calls the backend `/requests/agent`; the browser never calls Requesty directly.
+
+1. **Selected-request status**
+   - Setup: Create and submit a request, then select it in the request list.
+   - Chat: `What is the status of this request?`
+   - Expected: The assistant reports the selected request's current status without asking for its ID.
+
+2. **Name-and-date status lookup**
+   - Setup: Create a request titled `Laptop issue` on the current date.
+   - Chat: `What is the status of "Laptop issue" created on YYYY-MM-DD?`
+   - Expected: The assistant finds the accessible request using `find_request_by_name_date` and reports its status, even with no request selected.
+
+3. **Unknown request**
+   - Chat: `What is the status of "Does not exist" created on 2026-09-22?`
+   - Expected: The assistant says that no accessible request matched. It must not invent a request or status.
+
+4. **Ambiguous request**
+   - Setup: Create two requests with the same title on the same date.
+   - Chat: `What is the status of "Laptop issue" created on YYYY-MM-DD?`
+   - Expected: The assistant asks for more detail instead of choosing one silently.
+
+5. **General assistant response**
+   - Chat: `What can you help me with?`
+   - Expected: Requesty answers conversationally or explains that it can help with request status. It must not execute a write action.
+
+6. **Requesty failure**
+   - Action: Stop the backend's Requesty access or simulate a provider error, then click **Ask assistant**.
+   - Expected: The UI shows an unavailable/error message. No request is changed and the normal request workflow remains available.
+
+The chatbot currently has read-only tools only: `get_request_status` and `find_request_by_name_date`. The backend validates tool arguments and authorization before reading any request.
 
 ## API contract
 
-The API uses explicit identity headers for this slice:
+Identity headers:
 
 ```text
 x-user-id       actor identifier
@@ -47,103 +127,31 @@ x-user-role     employee | staff | admin
 x-department-id required for staff/admin requests
 ```
 
-Endpoints:
-
 | Method | Path | Purpose |
 |---|---|---|
 | POST | `/requests` | Validate and persist a request as `SUBMITTED` |
+| POST | `/requests/intake` | Ask Requesty for an advisory bounded candidate |
+| POST | `/requests/agent` | Ask the Requesty assistant to use authorized read-only tools |
 | GET | `/requests` | Employee's own requests or staff department queue |
 | GET | `/requests/:id` | Read one authorized request |
 | GET | `/requests/:id/history` | Read append-only status history |
 | PATCH | `/requests/:id/status` | Apply `SUBMITTED -> ASSIGNED -> IN_PROGRESS` |
 
-Example submission:
-
-```bash
-curl -X POST http://localhost:3000/requests -H "Content-Type: application/json" -H "x-user-id: employee-1" -H "x-user-role: employee" -d "{\"title\":\"Laptop issue\",\"description\":\"It will not boot\",\"category\":\"Hardware\",\"priority\":\"High\",\"departmentId\":\"IT\",\"createdBy\":\"employee-1\"}"
-```
-
-For the complete request/response contract, authorization rule, and intentional failures, read [docs/week3-full-stack-delivery.md](docs/week3-full-stack-delivery.md).
+The agent supports `get_request_status` for a selected request or UUID and `find_request_by_name_date` for a request title plus creation date. The backend validates the tool call and applies authorization before reading data.
 
 ## Tests and builds
 
-```bash
+```powershell
 cd backend
-npm test                 # business rule + SQLite persistence integration
-npm run test:e2e         # HTTP E2E flow, authorization, invalid input
+npm test                 # unit, persistence, and mocked Requesty tests
+npm run test:eval        # seven intake evaluation cases
+npm run test:e2e         # HTTP intake and agent workflow tests
 npm run build            # NestJS production build
 
 cd ../frontend
 npm run build            # React/Vite production build
 ```
 
-The automated coverage includes one allowed authorization case, one denied cross-department case, invalid request rejection, expected `401/403/404/400` failures, a business-rule test, a database integration test, an E2E test, and regression protection for the original lifecycle transitions.
+See [docs/week4-production-ai.md](docs/week4-production-ai.md) for the trust boundary, evaluation cases, and Requesty integration details. See [docs/product-spec.md](docs/product-spec.md), [docs/architecture.md](docs/architecture.md), [docs/data-model.md](docs/data-model.md), and [docs/workflow.md](docs/workflow.md) for the broader product and architecture context.
 
-## Product context
-
-See [docs/product-spec.md](docs/product-spec.md), [docs/architecture.md](docs/architecture.md), [docs/data-model.md](docs/data-model.md), and [docs/workflow.md](docs/workflow.md).
-
-Author: Gaelle — AI Academy 2026
-# Internal Operations Service Hub
-
-A company-internal system for requesting and tracking help from departments such as IT, HR, and Finance. Employees submit requests to the right department, follow their status, and communicate with whoever is resolving them — replacing scattered emails, chat messages, and hallway conversations.
-
-**Status:** early backend — the request lifecycle API is implemented (no UI, no authentication yet).
-
-## Repository structure
-
-```
-docs/
-  product-spec.md      — the problem, requirements, and acceptance criteria
-  architecture.md       — system components, data flow, trust boundaries, and key decisions
-  data-model.md          — entities, relationships, lifecycle rules, storage, and access patterns
-  workflow.md              — the request lifecycle business logic, as implemented in NestJS
-decisions/
-  ADR-001.md              — append-only history + relational vs. document database choice
-backend/
-  src/requests/              — NestJS module implementing the request lifecycle API
-```
-
-## How the docs connect
-
-1. **`docs/product-spec.md`** defines *what* the system needs to do and for whom — the requirements, actors, and acceptance criteria.
-2. **`docs/architecture.md`** takes those requirements and defines *how* the system is structured — its components, data flow, and trust boundaries — with each major decision traced back to a specific requirement.
-3. **`docs/data-model.md`** defines *what the system remembers* — entities, relationships, lifecycle rules, and how data is stored and queried.
-4. **`decisions/ADR-001.md`** records the reasoning behind the append-only history decision and the choice of a relational database (PostgreSQL).
-5. **`docs/workflow.md`** describes the request lifecycle logic as actually implemented in `backend/`, including a known deviation from the lifecycle documented in `product-spec.md`/`data-model.md` (see workflow.md for details).
-
-## Backend
-
-A NestJS API implementing the request lifecycle: `SUBMITTED → ASSIGNED → IN_PROGRESS`, with invalid transitions rejected server-side and every status change recorded in an append-only history log. See `docs/workflow.md` for the full breakdown and example requests.
-
-```bash
-cd backend
-npm install
-npm run start
-```
-
-## Author
-
-Gaelle — AI Academy 2026
-
-## Repository structure
-
-```
-docs/
-  product-spec.md    — the problem, requirements, and acceptance criteria
-  architecture.md     — system components, data flow, trust boundaries, and key decisions
-  data-model.md        — entities, relationships, lifecycle rules, storage, and access patterns
-decisions/
-  ADR-001.md            — record of one key architecture decision and its reasoning
-```
-
-## How the docs connect
-
-1. **`product-spec.md`** defines *what* the system needs to do and for whom — the requirements, actors, and acceptance criteria.
-2. **`architecture.md`** takes those requirements and defines *how* the system is structured — its components, data flow, and trust boundaries — with each major decision traced back to a specific requirement.
-3. **`data-model.md`** takes the architecture's data-owning components and defines *what the system remembers* — entities, relationships, lifecycle rules, and how data is stored and queried.
-4. **`decisions/ADR-001.md`** captures the reasoning behind one specific architectural decision in more depth.
-
-## Author
-
-Gaelle — AI Academy 2026
+Author: Gaelle - AI Academy 2026
