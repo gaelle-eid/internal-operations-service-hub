@@ -2,12 +2,12 @@
 
 ## Implementation status
 
-This is the target domain model, not a full description of the current database schema. The current demo persists request and event records and also has persisted `users` and `departments` tables. `users` holds the `employee`, `staff` and `admin` roles; the system admin role is not modelled yet because its rules are not decided. In local mock mode `users` is seeded from fixed demo fixtures; there is no trusted source of users for OIDC mode yet, and configurable OIDC verification is available but not connected to the company's tenant. Columns that reference users or departments on requests, comments and history records (for example `created_by`, `assigned_to`, `changed_by`, `department_id`) are still plain strings, not foreign keys. PostgreSQL is configurable, but SQLite is the local default and the foreign keys, constraints and migrations below have not yet been implemented. See [workflow.md](workflow.md) for the current boundary. Use mock data only.
+This is the target domain model, not a full description of the current database schema. The current demo persists request and event records and also has persisted `users` and `departments` tables. `users` holds the `employee`, `staff`, `manager` and `admin` roles (a manager belongs to one department and is the target of escalation); the system admin role is not modelled yet because its rules are not decided. In local mock mode `users` is seeded from fixed demo fixtures; there is no trusted source of users for OIDC mode yet, and configurable OIDC verification is available but not connected to the company's tenant. Columns that reference users or departments on requests, comments and history records (for example `created_by`, `assigned_to`, `changed_by`, `department_id`) are still plain strings, not foreign keys. PostgreSQL is configurable, but SQLite is the local default and the foreign keys, constraints and migrations below have not yet been implemented. See [workflow.md](workflow.md) for the current boundary. Use mock data only.
 
 ## Domain
 
 **Entities:**
-- User : an employee, department staff member, department admin, or system admin. Has a name, email, and role
+- User : an employee, department staff member, department manager, department admin, or system admin. Has a name, email, and role
 - Department : IT, HR, or Finance 
 - Request : this belongs to one department, has a title, description, category, priority, and current status
 - Comment : a message on a request's thread, written by either the requester or a resolver
@@ -15,7 +15,7 @@ This is the target domain model, not a full description of the current database 
 - AssignmentHistory : a log entry recording an assignee change and the admin who made it.
 
 **Attributes:**
-- **User**: `id`, `name`, `email`, `role` (employee / department staff / department admin / system admin), `department_id` (nullable — set for staff/admin, empty for employees)
+- **User**: `id`, `name`, `email`, `role` (employee / department staff / department manager / department admin / system admin), `department_id` (nullable — set for staff/admin, empty for employees)
 - **Department**: `id`, `name` (IT / HR / Finance)
 - **Request**: `id`, `title`, `description`, `category`, `priority`, `status`, `department_id`, `created_by` (User), `assigned_to` (User, nullable), `created_at`
 - **Comment**: `id`, `request_id`, `author_id` (User), `body`, `created_at`
@@ -44,7 +44,7 @@ This is the target domain model, not a full description of the current database 
 **Authorization-sensitive rules:**
 - Only staff belonging to a Request's own Department can view or act on it (department isolation).
 - Only the assigned staff member or a Department Admin can change a Request's status, with one exception: the requester can reopen their own Resolved Request (Resolved → In Progress). Every other status change stays with staff and admins.
-- Only a Department Admin can reassign a Request between staff or escalate it to a manager.
+- Only a Department Admin can reassign a Request between staff or escalate it to a manager. Escalation assigns the Request to a manager of the same Department and is recorded in AssignmentHistory like any other assignee change.
 - Reassignment notifications are delivered to the requester and newly assigned staff member.
 - A requester can only view, comment on, and (when Resolved) reopen their own Requests.
 
