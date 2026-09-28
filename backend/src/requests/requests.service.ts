@@ -17,7 +17,10 @@ import { InvalidTransitionException } from './exceptions/invalid-transition.exce
 export const VALID_TRANSITIONS: Record<RequestStatus, RequestStatus[]> = {
   [RequestStatus.SUBMITTED]: [RequestStatus.ASSIGNED],
   [RequestStatus.ASSIGNED]: [RequestStatus.IN_PROGRESS],
-  [RequestStatus.IN_PROGRESS]: [],
+  [RequestStatus.IN_PROGRESS]: [RequestStatus.WAITING_ON_REQUESTER, RequestStatus.RESOLVED],
+  [RequestStatus.WAITING_ON_REQUESTER]: [RequestStatus.IN_PROGRESS, RequestStatus.RESOLVED],
+  [RequestStatus.RESOLVED]: [RequestStatus.IN_PROGRESS, RequestStatus.CLOSED],
+  [RequestStatus.CLOSED]: [],
 };
 
 export type RequestActor = {
