@@ -2,7 +2,7 @@
 
 ## Implementation status
 
-This is the target domain model, not a description of the current database schema. The current demo persists request and event records but has no `User` or `Department` entities; local demo identities are mock strings, while configurable OIDC verification is available but not connected to the company's tenant. PostgreSQL is configurable, but SQLite is the local default and the foreign keys/constraints below have not yet been implemented. See [workflow.md](workflow.md) for the current boundary. Use mock data only.
+This is the target domain model, not a full description of the current database schema. The current demo persists request and event records and also has persisted `users` and `departments` tables. `users` holds the `employee`, `staff` and `admin` roles; the system admin role is not modelled yet because its rules are not decided. In local mock mode `users` is seeded from fixed demo fixtures; there is no trusted source of users for OIDC mode yet, and configurable OIDC verification is available but not connected to the company's tenant. Columns that reference users or departments on requests, comments and history records (for example `created_by`, `assigned_to`, `changed_by`, `department_id`) are still plain strings, not foreign keys. PostgreSQL is configurable, but SQLite is the local default and the foreign keys, constraints and migrations below have not yet been implemented. See [workflow.md](workflow.md) for the current boundary. Use mock data only.
 
 ## Domain
 
