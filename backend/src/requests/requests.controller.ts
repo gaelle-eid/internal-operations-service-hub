@@ -61,6 +61,11 @@ export class RequestsController {
     return this.requestsService.addComment(id, body.authorId, body.body, this.actor(headers));
   }
 
+  @Patch(':id/reassign')
+  reassign(@Param('id') id: string, @Body() body: { assignedTo: string }, @Headers() headers: Record<string, string>) {
+    return this.requestsService.reassign(id, body.assignedTo, this.actor(headers));
+  }
+
   // One generic transition endpoint rather than one per status, so the
   // lifecycle can grow (WAITING_ON_REQUESTER, RESOLVED, CLOSED) without
   // adding new routes — only the VALID_TRANSITIONS map in the service

@@ -138,6 +138,22 @@ export class RequestsService {
     return this.commentRepository.find({ where: { requestId: id }, order: { createdAt: 'ASC' } });
   }
 
+  async reassign(id: string, newAssigneeId: string, actor: RequestActor): Promise<RequestEntity> {
+    const request = await this.findOne(id, actor);
+    if (actor.role !== 'admin') {
+      throw new ForbiddenException('Only department admins can reassign requests');
+    }
+    if (request.departmentId !== actor.departmentId) {
+      throw new ForbiddenException('Admins can only reassign requests in their own department');
+    }
+
+    request.assignedTo = newAssigneeId;
+    await this.requestRepository.save(request);
+    await this.recordHistory(id, request.status, request.status, newAssigneeId);
+    await this.notificationService.notifyStatusChange(id, request.createdBy, 'REASSIGNED', request.status);
+    return request;
+  }
+
   async transition(id: string, toStatus: RequestStatus, changedBy: string, actor: RequestActor): Promise<RequestEntity> {
     const request = await this.findOne(id, actor);
     const isClaim = toStatus === RequestStatus.ASSIGNED && request.assignedTo === null && actor.role === 'staff';

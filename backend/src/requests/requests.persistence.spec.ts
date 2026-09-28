@@ -87,4 +87,21 @@ describe('request persistence integration', () => {
     expect(staffNotifications.some((notification) => notification.requestId === request.id && notification.type === 'COMMENT')).toBe(true);
     expect(employeeNotifications.some((notification) => notification.requestId === request.id && notification.type === 'COMMENT')).toBe(false);
   });
+
+  it('allows a department admin to reassign a request and blocks staff reassignment', async () => {
+    const request = await service.create({
+      title: 'Printer issue',
+      description: 'The printer is offline',
+      category: 'Hardware',
+      priority: 'Medium',
+      departmentId: 'IT',
+      createdBy: 'employee-4',
+    }, { id: 'employee-4', role: 'employee' });
+
+    const reassigned = await service.reassign(request.id, 'it-staff-2', { id: 'it-admin-1', role: 'admin', departmentId: 'IT' });
+
+    expect(reassigned.assignedTo).toBe('it-staff-2');
+    await expect(service.reassign(request.id, 'it-staff-3', { id: 'it-staff-1', role: 'staff', departmentId: 'IT' }))
+      .rejects.toThrow('Only department admins can reassign requests');
+  });
 });
