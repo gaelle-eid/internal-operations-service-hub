@@ -22,7 +22,9 @@ This page describes the current code and distinguishes it from the target requir
 
 ## Current UI boundary
 
-The employee UI supports local mock mode and configurable OIDC login, request list/detail, intake form, assistant, append-only status history, a visible comment thread with composer, and a recent notification feed polled every 10 seconds. It does not yet provide staff/admin queues or reassignment controls, employee search/filters, or admin sorting. The actual company login is not usable until provider settings and claim mapping are configured in `.env` files.
+The UI supports local mock mode and configurable OIDC login, request list/detail, intake form, assistant, append-only status history, a visible comment thread with composer, and a recent notification feed polled every 10 seconds. In mock mode, the demo actor selector switches among sample employees, IT/HR/Finance staff, and department admins. Staff can see their mock department queue, claim unassigned requests, and advance requests they own. Admins can sort open department requests by status or priority, reassign to sample staff in the same department, and apply valid lifecycle transitions. These controls use the existing API authorization; the mock actor switcher is not available in OIDC mode.
+
+No trusted user directory exists yet, so reassignment choices only represent mock staff and manager escalation is not implemented. Employee search/filters are also still missing. The actual company login is not usable until provider settings and claim mapping are configured in `.env` files.
 
 ## API routes
 
@@ -46,7 +48,7 @@ The headers shown in local examples and E2E tests are mock data, not proof of au
 1. Obtain company issuer, API audience, JWKS URI, SPA client registration/redirect URL, API scope, and verified subject/role/department claim names and values; configure and validate the OIDC integration against that tenant.
 2. Add or connect a trusted user/department directory, then validate reassignment targets and manager escalation.
 3. Implement PostgreSQL migrations, foreign keys, and constraints from [ADR-001.md](../decisions/ADR-001.md).
-4. Complete staff/admin UI, employee search and filters, and department queue sorting.
+4. Add employee search and filters; connect staff/admin controls to a trusted user directory and implement manager escalation.
 5. Add end-to-end acceptance coverage for the full documented workflow.
 
 ## Validation
