@@ -3,8 +3,10 @@ import { FormEvent, useEffect, useState } from 'react';
 import { Bot, CheckCircle2, ChevronRight, CircleAlert, Inbox, Plus, Send, ShieldCheck, Sparkles } from 'lucide-react';
 import './styles.css';
 
-type Status = 'SUBMITTED' | 'ASSIGNED' | 'IN_PROGRESS';
+type Status = 'SUBMITTED' | 'ASSIGNED' | 'IN_PROGRESS' | 'WAITING_ON_REQUESTER' | 'RESOLVED' | 'CLOSED';
 type ServiceRequest = { id: string; title: string; description: string; category: string; priority: string; departmentId: string; status: Status; assignedTo: string | null; createdAt: string };
+type Comment = { id: string; requestId: string; authorId: string; body: string; createdAt: string };
+type Notification = { id: string; userId: string; requestId: string; type: 'STATUS_CHANGE' | 'COMMENT'; message: string; createdAt: string; readAt: string | null };
 type IntakeResponse = { outcome: 'READY' | 'NEEDS_CLARIFICATION' | 'INVALID_AI_OUTPUT' | 'PROVIDER_UNAVAILABLE'; candidate: { title: string; description: string; category: string; priority: string; departmentId: string } | null; clarification?: string };
 type AgentResponse = { outcome: string; message?: string; tool?: string; result?: { id: string; title: string; status: Status; departmentId: string; assignedTo: string | null } };
 type Actor = { id: string; role: 'employee' | 'staff'; departmentId?: string };
@@ -30,10 +32,17 @@ function App() {
   const [assistantQuestion, setAssistantQuestion] = useState('');
   const [assistantReply, setAssistantReply] = useState('');
   const [askingAssistant, setAskingAssistant] = useState(false);
+  const [notifications, setNotifications] = useState<Notification[]>([]);
+  const [comments, setComments] = useState<Comment[]>([]);
+  const [commentText, setCommentText] = useState('');
+  const [commenting, setCommenting] = useState(false);
   const [form, setForm] = useState({ title: '', description: '', category: 'Hardware', priority: 'Medium', departmentId: 'IT' });
 
+  const loadNotifications = async () => { try { setNotifications(await api<Notification[]>('/requests/notifications')); } catch (err) { setNotifications([]); } };
+  const loadComments = async (requestId: string) => { try { setComments(await api<Comment[]>(`/requests/${requestId}/comments`)); } catch (err) { setComments([]); } };
   const load = async () => { try { setRequests(await api<ServiceRequest[]>('/requests')); setError(''); } catch (err) { setError(err instanceof Error ? err.message : 'Could not connect to the service'); } };
-  useEffect(() => { load(); }, []);
+  useEffect(() => { load(); loadNotifications(); }, []);
+  useEffect(() => { if (selected) { loadComments(selected.id); } else { setComments([]); } }, [selected]);
 
   const submit = async (event: FormEvent) => {
     event.preventDefault();
@@ -76,6 +85,21 @@ function App() {
       setAssistantReply(err instanceof Error ? err.message : 'The Requesty assistant is unavailable.');
     } finally {
       setAskingAssistant(false);
+    }
+  };
+
+  const addComment = async () => {
+    if (!selected || !commentText.trim()) return;
+    setCommenting(true);
+    try {
+      await api(`/requests/${selected.id}/comments`, { method: 'POST', body: JSON.stringify({ authorId: actor.id, body: commentText }) });
+      setCommentText('');
+      await loadComments(selected.id);
+      await loadNotifications();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not add comment');
+    } finally {
+      setCommenting(false);
     }
   };
 

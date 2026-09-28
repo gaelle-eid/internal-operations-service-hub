@@ -129,6 +129,24 @@ describe('request persistence integration', () => {
     expect(employeeNotifications.some((notification) => notification.requestId === request.id && notification.type === 'COMMENT')).toBe(false);
   });
 
+  it('lists notifications for a user in reverse chronological order', async () => {
+    const request = await service.create({
+      title: 'VPN issue',
+      description: 'VPN keeps dropping',
+      category: 'Access',
+      priority: 'High',
+      departmentId: 'IT',
+      createdBy: 'employee-5',
+    }, { id: 'employee-5', role: 'employee' });
+
+    await service.transition(request.id, RequestStatus.ASSIGNED, 'it-staff-4', { id: 'it-staff-4', role: 'staff', departmentId: 'IT' });
+    const notifications = await notificationService.listForUser('employee-5');
+
+    expect(notifications.length).toBeGreaterThan(0);
+    expect(notifications[0].type).toBe('STATUS_CHANGE');
+    expect(notifications[0].requestId).toBe(request.id);
+  });
+
   it('allows a department admin to reassign a request and blocks staff reassignment', async () => {
     const request = await service.create({
       title: 'Printer issue',

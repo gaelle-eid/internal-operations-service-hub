@@ -7,6 +7,7 @@ import { IntakeService } from './intake/intake.service';
 import { AgentRequestDto } from './dto/agent-request.dto';
 import { AgentService } from './agent.service';
 import { AuthGuard } from './auth.guard';
+import { NotificationService } from './notification.service';
 
 @Controller('requests')
 @UseGuards(AuthGuard)
@@ -15,6 +16,7 @@ export class RequestsController {
     private readonly requestsService: RequestsService,
     private readonly intakeService: IntakeService,
     private readonly agentService: AgentService,
+    private readonly notificationService: NotificationService,
   ) {}
 
   @Post('intake')
@@ -52,6 +54,12 @@ export class RequestsController {
   @Get(':id/comments')
   getComments(@Param('id') id: string, @Headers() headers: Record<string, string>) {
     return this.requestsService.getComments(id, this.actor(headers));
+  }
+
+  @Get('notifications')
+  getNotifications(@Headers() headers: Record<string, string>) {
+    const actor = this.actor(headers);
+    return this.notificationService.listForUser(actor.id);
   }
 
   @Post(':id/comments')
