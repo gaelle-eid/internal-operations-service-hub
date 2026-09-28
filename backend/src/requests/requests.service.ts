@@ -5,9 +5,11 @@ import { Repository } from 'typeorm';
 import { RequestEntity } from './entities/request.entity';
 import { StatusHistoryEntry } from './entities/status-history.entity';
 import { CommentEntry } from './entities/comment.entity';
+import { NotificationEntry } from './entities/notification.entity';
 import { RequestStatus } from './enums/request-status.enum';
 import { CreateRequestDto } from './dto/create-request.dto';
 import { InvalidTransitionException } from './exceptions/invalid-transition.exception';
+import { NotificationService } from './notification.service';
 
 // The only statuses a request may legally move to next, keyed by its current
 // status. This is the single source of truth for the lifecycle rule in
@@ -39,6 +41,9 @@ export class RequestsService {
     private readonly historyRepository: Repository<StatusHistoryEntry>,
     @InjectRepository(CommentEntry)
     private readonly commentRepository: Repository<CommentEntry>,
+    @InjectRepository(NotificationEntry)
+    private readonly notificationRepository: Repository<NotificationEntry>,
+    private readonly notificationService: NotificationService,
   ) {}
 
   async create(dto: CreateRequestDto, actor: RequestActor): Promise<RequestEntity> {
@@ -62,6 +67,7 @@ export class RequestsService {
     // Every request gets a StatusHistory entry from the moment it's
     // submitted, so the audit trail is complete from creation onward.
     await this.recordHistory(request.id, null, RequestStatus.SUBMITTED, dto.createdBy);
+    await this.notificationService.notifyStatusChange(request.id, dto.createdBy, 'NEW', RequestStatus.SUBMITTED);
 
     return request;
   }
@@ -116,6 +122,14 @@ export class RequestsService {
       createdAt: new Date(),
     };
     await this.commentRepository.save(comment);
+
+    const recipientIds = new Set<string>([request.createdBy, request.assignedTo].filter(Boolean) as string[]);
+    for (const recipientId of recipientIds) {
+      if (recipientId !== authorId) {
+        await this.notificationService.notifyComment(requestId, recipientId, body.trim());
+      }
+    }
+
     return comment;
   }
 
@@ -148,6 +162,12 @@ export class RequestsService {
 
     await this.requestRepository.save(request);
     await this.recordHistory(id, fromStatus, toStatus, changedBy);
+
+    const recipientIds = new Set<string>([request.createdBy, request.assignedTo].filter(Boolean) as string[]);
+    for (const recipientId of recipientIds) {
+      await this.notificationService.notifyStatusChange(id, recipientId, fromStatus, toStatus);
+    }
+
     return request;
   }
 

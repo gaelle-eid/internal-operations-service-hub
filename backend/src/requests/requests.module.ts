@@ -8,14 +8,17 @@ import { CommentEntry } from './entities/comment.entity';
 import { IntakeService } from './intake/intake.service';
 import { INTAKE_PROVIDER, RequestyIntakeProvider } from './intake/intake.provider';
 import { AgentService } from './agent.service';
+import { NotificationEntry } from './entities/notification.entity';
+import { NotificationService } from './notification.service';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([RequestEntity, StatusHistoryEntry, CommentEntry])],
+  imports: [TypeOrmModule.forFeature([RequestEntity, StatusHistoryEntry, CommentEntry, NotificationEntry])],
   controllers: [RequestsController],
   providers: [
     RequestsService,
     IntakeService,
     AgentService,
+    NotificationService,
     RequestyIntakeProvider,
     {
       provide: INTAKE_PROVIDER,
