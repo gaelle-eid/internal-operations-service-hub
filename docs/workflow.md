@@ -5,6 +5,7 @@ This page describes the current code and distinguishes it from the target requir
 ## Mock identity and data
 
 - In local mock mode only, the frontend uses demo actor `employee-1` and sends `x-user-id`, `x-user-role`, and optional `x-department-id` headers.
+- The backend resolves mock IDs through a fixed server-side fixture directory and rejects unknown IDs, caller-selected roles, or mismatched departments. These fixtures are not persisted `User`/`Department` entities and are not production authentication.
 - The browser now supports configurable OIDC Authorization Code + PKCE, and the backend can verify Bearer access tokens using configured issuer, audience, JWKS, and an allowlisted asymmetric signing algorithm (RS256 by default). The real company tenant is not configured in this repository yet. Local mock-header mode is explicit and is rejected when `NODE_ENV=production`.
 - In automated tests only, the guard defaults to mock mode so the current HTTP tests can use example identities. These test values are fixtures, not users.
 - Requests, comments, notifications, status history, and assignment history are persisted locally in SQLite by default. This is persistent demo data, not a directory of real employees. Use mock/example content only; do not enter real employee or confidential information.
@@ -16,7 +17,7 @@ This page describes the current code and distinguishes it from the target requir
 - Requests start at `SUBMITTED`; valid transitions are `SUBMITTED -> ASSIGNED -> IN_PROGRESS -> WAITING_ON_REQUESTER -> RESOLVED -> CLOSED`, with `WAITING_ON_REQUESTER -> IN_PROGRESS` and `RESOLVED -> IN_PROGRESS` allowed.
 - Employees are filtered to their own requests. Staff/admin access is filtered by the department claim from a verified OIDC token or the department ID in local mock headers.
 - Comments are append-only through the API. Status changes and assignments have separate append-only history records.
-- Department admins can reassign requests in their own department. Because there is no trusted user directory, the API cannot yet verify that the target assignee belongs to that department or is a manager.
+- Department admins can reassign requests in their own department. In mock mode, targets must be registered staff in the same department. OIDC mode still lacks a trusted persisted directory for validating targets or manager escalation.
 - In-app status, comment, and reassignment notifications are persisted by the backend.
 - Requesty intake returns an advisory candidate; the read-only assistant can query accessible requests. Automated tests mock provider responses.
 
@@ -24,7 +25,7 @@ This page describes the current code and distinguishes it from the target requir
 
 The UI supports local mock mode and configurable OIDC login, request list/detail, employee search by title/description/category, status/department/date filters, intake form, assistant, append-only status history, a visible comment thread with composer, and a recent notification feed polled every 10 seconds. In mock mode, the demo actor selector switches among sample employees, IT/HR/Finance staff, and department admins. Staff can see their mock department queue, claim unassigned requests, and advance requests they own. Admins can sort open department requests by status or priority, reassign to sample staff in the same department, and apply valid lifecycle transitions. These controls use the existing API authorization; the mock actor switcher is not available in OIDC mode.
 
-No trusted user directory exists yet, so reassignment choices only represent mock staff and manager escalation is not implemented. The actual company login is not usable until provider settings and claim mapping are configured in `.env` files.
+The mock actor switcher and reassignment choices use fixed demo fixtures. OIDC login is not usable until provider settings and claim mapping are configured in `.env` files, and manager escalation still needs a trusted directory-backed role.
 
 ## API routes
 
@@ -46,10 +47,11 @@ The headers shown in local examples and E2E tests are mock data, not proof of au
 ## Remaining work from the docs
 
 1. Obtain company issuer, API audience, JWKS URI, SPA client registration/redirect URL, API scope, and verified subject/role/department claim names and values; configure and validate the OIDC integration against that tenant.
-2. Add or connect a trusted user/department directory, then validate reassignment targets and manager escalation.
+2. Add or connect a persisted user/department directory, then validate OIDC identities, reassignment targets, and manager escalation.
 3. Implement PostgreSQL migrations, foreign keys, and constraints from [ADR-001.md](../decisions/ADR-001.md).
-4. Connect staff/admin controls to a trusted user directory and implement manager escalation.
-5. Add end-to-end acceptance coverage for the full documented workflow.
+4. Connect staff/admin controls to the persisted directory and add manager escalation for eligible users.
+5. Let the requester reopen their own Resolved request (Resolved → In Progress). The docs now agree on this rule, but the API still rejects it because only the assigned staff member or an admin can change status today.
+6. Add end-to-end acceptance coverage for the full documented workflow, including the requester reopen.
 
 ## Validation
 

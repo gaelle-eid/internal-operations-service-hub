@@ -15,6 +15,7 @@ Employees, department staff and admin, system admin
 - Department staff can view, claim, and update requests assigned to their department
 - Requests have a defined status lifecycle: Submitted → Assigned → In Progress → Waiting on Requester → Resolved → Closed
 - Requests can be commented on by both requester and resolver (a visible thread)
+- The requester can reopen their own Resolved request (back to In Progress) if unsatisfied; every other status change is made by the assigned staff member or a department admin
 - Requests can be reassigned between staff within a department, or given to a manager
 - Employees receive notifications on status changes and new comments
 - Department admins can view all requests for their department 

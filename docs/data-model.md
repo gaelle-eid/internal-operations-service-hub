@@ -43,10 +43,10 @@ This is the target domain model, not a description of the current database schem
 
 **Authorization-sensitive rules:**
 - Only staff belonging to a Request's own Department can view or act on it (department isolation).
-- Only the assigned staff member or a Department Admin can change a Request's status.
+- Only the assigned staff member or a Department Admin can change a Request's status, with one exception: the requester can reopen their own Resolved Request (Resolved → In Progress). Every other status change stays with staff and admins.
 - Only a Department Admin can reassign a Request between staff or escalate it to a manager.
 - Reassignment notifications are delivered to the requester and newly assigned staff member.
-- A requester can only view and comment on their own Requests.
+- A requester can only view, comment on, and (when Resolved) reopen their own Requests.
 
 ## Storage
 

@@ -63,6 +63,7 @@ The architecture below describes the target system. The current code supports co
 - Every request into the API must be authenticated 
 - The API checks department membership before letting staff view or act on a request outside their own department
 - Only admins can reassign requests to a manager or across staff within a department.
+- Only the assigned staff member or a department admin can change a request's status, except that the requester can reopen their own Resolved request (back to In Progress).
 - History and comments are append-only at the API level, there's no "edit" or "delete" operation so the audit trail can be trustworthy 
 
 **Failure scenarios:**
