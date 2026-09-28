@@ -165,4 +165,34 @@ describe('request persistence integration', () => {
     await expect(service.reassign(request.id, 'it-staff-3', { id: 'it-staff-1', role: 'staff', departmentId: 'IT' }))
       .rejects.toThrow('Only department admins can reassign requests');
   });
+
+  it('lets the requester reopen their own Resolved request but nothing else', async () => {
+    const requester = { id: 'employee-6', role: 'employee' as const };
+    const staff = { id: 'it-staff-1', role: 'staff' as const, departmentId: 'IT' };
+    const request = await service.create({
+      title: 'Monitor flicker',
+      description: 'The monitor flickers on startup',
+      category: 'Hardware',
+      priority: 'Low',
+      departmentId: 'IT',
+      createdBy: 'employee-6',
+    }, requester);
+
+    await expect(service.transition(request.id, RequestStatus.ASSIGNED, 'employee-6', requester)).rejects.toThrow('Only the assigned staff member or department admin can change status');
+    await service.transition(request.id, RequestStatus.ASSIGNED, 'it-staff-1', staff);
+    await service.transition(request.id, RequestStatus.IN_PROGRESS, 'it-staff-1', staff);
+    await expect(service.transition(request.id, RequestStatus.RESOLVED, 'employee-6', requester)).rejects.toThrow('Only the assigned staff member or department admin can change status');
+    await service.transition(request.id, RequestStatus.RESOLVED, 'it-staff-1', staff);
+
+    await expect(service.transition(request.id, RequestStatus.CLOSED, 'employee-6', requester)).rejects.toThrow('Only the assigned staff member or department admin can change status');
+    await expect(service.transition(request.id, RequestStatus.IN_PROGRESS, 'employee-7', { id: 'employee-7', role: 'employee' })).rejects.toThrow('You are not allowed to access this department request');
+
+    const reopened = await service.transition(request.id, RequestStatus.IN_PROGRESS, 'employee-6', requester);
+    expect(reopened.status).toBe(RequestStatus.IN_PROGRESS);
+
+    const history = await service.getHistory(request.id, requester);
+    expect(history[history.length - 1]).toMatchObject({ fromStatus: RequestStatus.RESOLVED, toStatus: RequestStatus.IN_PROGRESS, changedBy: 'employee-6' });
+    const staffNotifications = await notificationService.listForUser('it-staff-1');
+    expect(staffNotifications[0]).toMatchObject({ type: 'STATUS_CHANGE', requestId: request.id });
+  });
 });

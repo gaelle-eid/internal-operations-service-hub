@@ -16,6 +16,7 @@ This page describes the current code and distinguishes it from the target requir
 
 - Requests start at `SUBMITTED`; valid transitions are `SUBMITTED -> ASSIGNED -> IN_PROGRESS -> WAITING_ON_REQUESTER -> RESOLVED -> CLOSED`, with `WAITING_ON_REQUESTER -> IN_PROGRESS` and `RESOLVED -> IN_PROGRESS` allowed.
 - Employees are filtered to their own requests. Staff/admin access is filtered by the department claim from a verified OIDC token or the department ID in local mock headers.
+- Status changes are limited to the assigned staff member or a department admin (staff may also claim an unassigned request), with one exception: the requester can reopen their own Resolved request (Resolved -> In Progress).
 - Comments are append-only through the API. Status changes and assignments have separate append-only history records.
 - Department admins can reassign requests in their own department. In mock mode, targets must be registered staff in the same department. OIDC mode still lacks a trusted persisted directory for validating targets or manager escalation.
 - In-app status, comment, and reassignment notifications are persisted by the backend.
@@ -23,7 +24,7 @@ This page describes the current code and distinguishes it from the target requir
 
 ## Current UI boundary
 
-The UI supports local mock mode and configurable OIDC login, request list/detail, employee search by title/description/category, status/department/date filters, intake form, assistant, append-only status history, a visible comment thread with composer, and a recent notification feed polled every 10 seconds. In mock mode, the demo actor selector switches among sample employees, IT/HR/Finance staff, and department admins. Staff can see their mock department queue, claim unassigned requests, and advance requests they own. Admins can sort open department requests by status or priority, reassign to sample staff in the same department, and apply valid lifecycle transitions. These controls use the existing API authorization; the mock actor switcher is not available in OIDC mode.
+The UI supports local mock mode and configurable OIDC login, request list/detail, employee search by title/description/category, status/department/date filters, intake form, assistant, append-only status history, a visible comment thread with composer, and a recent notification feed polled every 10 seconds. In mock mode, the demo actor selector switches among sample employees, IT/HR/Finance staff, and department admins. Requesters see a Reopen request button on their own Resolved requests. Staff can see their mock department queue, claim unassigned requests, and advance requests they own. Admins can sort open department requests by status or priority, reassign to sample staff in the same department, and apply valid lifecycle transitions. These controls use the existing API authorization; the mock actor switcher is not available in OIDC mode.
 
 The mock actor switcher and reassignment choices use fixed demo fixtures. OIDC login is not usable until provider settings and claim mapping are configured in `.env` files, and manager escalation still needs a trusted directory-backed role.
 
@@ -50,8 +51,7 @@ The headers shown in local examples and E2E tests are mock data, not proof of au
 2. Add or connect a persisted user/department directory, then validate OIDC identities, reassignment targets, and manager escalation.
 3. Implement PostgreSQL migrations, foreign keys, and constraints from [ADR-001.md](../decisions/ADR-001.md).
 4. Connect staff/admin controls to the persisted directory and add manager escalation for eligible users.
-5. Let the requester reopen their own Resolved request (Resolved → In Progress). The docs now agree on this rule, but the API still rejects it because only the assigned staff member or an admin can change status today.
-6. Add end-to-end acceptance coverage for the full documented workflow, including the requester reopen.
+5. Add end-to-end acceptance coverage for the full documented workflow.
 
 ## Validation
 

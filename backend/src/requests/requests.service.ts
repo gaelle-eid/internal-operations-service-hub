@@ -182,7 +182,12 @@ export class RequestsService {
   async transition(id: string, toStatus: RequestStatus, changedBy: string, actor: RequestActor): Promise<RequestEntity> {
     const request = await this.findOne(id, actor);
     const isClaim = toStatus === RequestStatus.ASSIGNED && request.assignedTo === null && actor.role === 'staff';
-    if (actor.role !== 'admin' && actor.id !== request.assignedTo && !isClaim) {
+    // The one status change a requester may make: reopening their own Resolved request
+    // (docs/product-spec.md acceptance criteria, docs/data-model.md authorization rules).
+    const isRequesterReopen = request.status === RequestStatus.RESOLVED
+      && toStatus === RequestStatus.IN_PROGRESS
+      && actor.id === request.createdBy;
+    if (actor.role !== 'admin' && actor.id !== request.assignedTo && !isClaim && !isRequesterReopen) {
       throw new ForbiddenException('Only the assigned staff member or department admin can change status');
     }
     if (actor.id !== changedBy) {

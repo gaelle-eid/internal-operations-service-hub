@@ -319,13 +319,16 @@ function App() {
     }
   };
 
-  const canTransition = Boolean(actor && selected && (
+  const hasStaffControl = Boolean(actor && selected && (
     actor.role === 'admin'
     || actor.id === selected.assignedTo
     || (actor.role === 'staff' && selected.status === 'SUBMITTED' && selected.assignedTo === null)
   ));
-  const availableTransitions = selected && canTransition
-    ? NEXT_STATUSES[selected.status].filter(status => !(actor?.role === 'admin' && status === 'ASSIGNED'))
+  const canRequesterReopen = Boolean(actor && selected && selected.status === 'RESOLVED' && actor.id === selected.createdBy);
+  const availableTransitions = selected && (hasStaffControl || canRequesterReopen)
+    ? NEXT_STATUSES[selected.status]
+      .filter(status => !(actor?.role === 'admin' && status === 'ASSIGNED'))
+      .filter(status => hasStaffControl || status === 'IN_PROGRESS')
     : [];
   const assigneeOptions = selected && actor?.role === 'admin' && AUTH_MODE === 'mock'
     ? MOCK_ACTORS.filter(item => item.role === 'staff' && item.departmentId === selected.departmentId)

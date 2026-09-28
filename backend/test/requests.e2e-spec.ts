@@ -157,4 +157,23 @@ describe('requests API (e2e)', () => {
 
     expect(response.body).toMatchObject({ outcome: 'TOOL_EXECUTED', tool: 'get_request_status', result: { id: created.body.id, status: 'SUBMITTED' } });
   });
+
+  it('lets the requester reopen a Resolved request but not close it', async () => {
+    const employeeHeaders = { 'x-user-id': 'employee-1', 'x-user-role': 'employee' };
+    const staffHeaders = { 'x-user-id': 'it-staff-1', 'x-user-role': 'staff', 'x-department-id': 'IT' };
+    const created = await request(app.getHttpServer())
+      .post('/requests')
+      .set(employeeHeaders)
+      .send({ title: 'Reopen check', description: 'Needs a second look', category: 'Hardware', priority: 'Medium', departmentId: 'IT', createdBy: 'employee-1' })
+      .expect(201);
+    const transitionUrl = `/requests/${created.body.id}/status`;
+
+    for (const toStatus of [RequestStatus.ASSIGNED, RequestStatus.IN_PROGRESS, RequestStatus.RESOLVED]) {
+      await request(app.getHttpServer()).patch(transitionUrl).set(staffHeaders).send({ toStatus, changedBy: 'it-staff-1' }).expect(200);
+    }
+
+    await request(app.getHttpServer()).patch(transitionUrl).set(employeeHeaders).send({ toStatus: RequestStatus.CLOSED, changedBy: 'employee-1' }).expect(403);
+    const reopened = await request(app.getHttpServer()).patch(transitionUrl).set(employeeHeaders).send({ toStatus: RequestStatus.IN_PROGRESS, changedBy: 'employee-1' }).expect(200);
+    expect(reopened.body.status).toBe(RequestStatus.IN_PROGRESS);
+  });
 });
