@@ -4,6 +4,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { RequestEntity } from './entities/request.entity';
 import { StatusHistoryEntry } from './entities/status-history.entity';
+import { CommentEntry } from './entities/comment.entity';
 import { RequestStatus } from './enums/request-status.enum';
 import { CreateRequestDto } from './dto/create-request.dto';
 import { InvalidTransitionException } from './exceptions/invalid-transition.exception';
@@ -36,6 +37,8 @@ export class RequestsService {
     private readonly requestRepository: Repository<RequestEntity>,
     @InjectRepository(StatusHistoryEntry)
     private readonly historyRepository: Repository<StatusHistoryEntry>,
+    @InjectRepository(CommentEntry)
+    private readonly commentRepository: Repository<CommentEntry>,
   ) {}
 
   async create(dto: CreateRequestDto, actor: RequestActor): Promise<RequestEntity> {
@@ -91,6 +94,34 @@ export class RequestsService {
   async getHistory(id: string, actor: RequestActor): Promise<StatusHistoryEntry[]> {
     await this.findOne(id, actor);
     return this.historyRepository.find({ where: { requestId: id }, order: { changedAt: 'ASC' } });
+  }
+
+  async addComment(requestId: string, authorId: string, body: string, actor: RequestActor): Promise<CommentEntry> {
+    const request = await this.findOne(requestId, actor);
+    if (actor.role === 'employee' && request.createdBy !== actor.id) {
+      throw new ForbiddenException('Employees can only comment on their own requests');
+    }
+    if (actor.role !== 'admin' && actor.id !== request.createdBy && actor.id !== request.assignedTo) {
+      throw new ForbiddenException('Only the requester, assigned staff member, or admin can comment');
+    }
+    if (!body || !body.trim()) {
+      throw new ForbiddenException('Comment body cannot be empty');
+    }
+
+    const comment = {
+      id: randomUUID(),
+      requestId,
+      authorId,
+      body: body.trim(),
+      createdAt: new Date(),
+    };
+    await this.commentRepository.save(comment);
+    return comment;
+  }
+
+  async getComments(id: string, actor: RequestActor): Promise<CommentEntry[]> {
+    await this.findOne(id, actor);
+    return this.commentRepository.find({ where: { requestId: id }, order: { createdAt: 'ASC' } });
   }
 
   async transition(id: string, toStatus: RequestStatus, changedBy: string, actor: RequestActor): Promise<RequestEntity> {

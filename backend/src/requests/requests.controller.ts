@@ -47,6 +47,20 @@ export class RequestsController {
     return this.requestsService.getHistory(id, this.actor(headers));
   }
 
+  @Get(':id/comments')
+  getComments(@Param('id') id: string, @Headers() headers: Record<string, string>) {
+    return this.requestsService.getComments(id, this.actor(headers));
+  }
+
+  @Post(':id/comments')
+  addComment(
+    @Param('id') id: string,
+    @Body() body: { body: string; authorId: string },
+    @Headers() headers: Record<string, string>,
+  ) {
+    return this.requestsService.addComment(id, body.authorId, body.body, this.actor(headers));
+  }
+
   // One generic transition endpoint rather than one per status, so the
   // lifecycle can grow (WAITING_ON_REQUESTER, RESOLVED, CLOSED) without
   // adding new routes — only the VALID_TRANSITIONS map in the service

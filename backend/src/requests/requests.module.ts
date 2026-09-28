@@ -4,12 +4,13 @@ import { RequestsService } from './requests.service';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { RequestEntity } from './entities/request.entity';
 import { StatusHistoryEntry } from './entities/status-history.entity';
+import { CommentEntry } from './entities/comment.entity';
 import { IntakeService } from './intake/intake.service';
 import { INTAKE_PROVIDER, RequestyIntakeProvider } from './intake/intake.provider';
 import { AgentService } from './agent.service';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([RequestEntity, StatusHistoryEntry])],
+  imports: [TypeOrmModule.forFeature([RequestEntity, StatusHistoryEntry, CommentEntry])],
   controllers: [RequestsController],
   providers: [
     RequestsService,
