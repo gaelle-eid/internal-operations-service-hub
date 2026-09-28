@@ -1,73 +1,49 @@
-import { Test } from '@nestjs/testing';
-import { getRepositoryToken, TypeOrmModule } from '@nestjs/typeorm';
+import { Injectable, OnModuleInit } from '@nestjs/common';
+import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { DepartmentEntity } from './entities/department.entity';
 import { UserEntity } from './entities/user.entity';
-import { DirectoryService } from './directory.service';
-import { MOCK_USERS } from './mock-directory';
+import { getAuthMode, MOCK_USERS } from './mock-directory';
 
-describe('persisted user and department directory', () => {
-  let directory: DirectoryService;
-  let departmentRepository: Repository<DepartmentEntity>;
-  let userRepository: Repository<UserEntity>;
-  const previousMode = process.env.AUTH_MODE;
+export const DEPARTMENT_NAMES = ['IT', 'HR', 'Finance'] as const;
 
-  async function build(): Promise<void> {
-    const module = await Test.createTestingModule({
-      imports: [
-        TypeOrmModule.forRoot({ type: 'sqlite', database: ':memory:', dropSchema: true, synchronize: true, entities: [DepartmentEntity, UserEntity] }),
-        TypeOrmModule.forFeature([DepartmentEntity, UserEntity]),
-      ],
-      providers: [DirectoryService],
-    }).compile();
-    directory = module.get(DirectoryService);
-    departmentRepository = module.get(getRepositoryToken(DepartmentEntity));
-    userRepository = module.get(getRepositoryToken(UserEntity));
+// The persisted user/department directory (docs/data-model.md). Departments are a fixed
+// set. Users are seeded from the demo fixtures in mock mode only; OIDC mode has no
+// trusted source of users yet (docs/workflow.md, remaining work).
+@Injectable()
+export class DirectoryService implements OnModuleInit {
+  constructor(
+    @InjectRepository(DepartmentEntity)
+    private readonly departmentRepository: Repository<DepartmentEntity>,
+    @InjectRepository(UserEntity)
+    private readonly userRepository: Repository<UserEntity>,
+  ) {}
+
+  async onModuleInit(): Promise<void> {
+    await this.seed();
   }
 
-  afterEach(() => {
-    if (previousMode === undefined) delete process.env.AUTH_MODE;
-    else process.env.AUTH_MODE = previousMode;
-  });
+  // Idempotent: never overwrites or duplicates an existing row.
+  async seed(): Promise<void> {
+    for (const name of DEPARTMENT_NAMES) {
+      if (!(await this.departmentRepository.findOneBy({ id: name }))) {
+        await this.departmentRepository.save({ id: name, name });
+      }
+    }
+    if (getAuthMode() !== 'mock' || process.env.NODE_ENV === 'production') return;
+    for (const user of MOCK_USERS) {
+      if (!(await this.userRepository.findOneBy({ id: user.id }))) {
+        await this.userRepository.save({ ...user });
+      }
+    }
+  }
 
-  it('seeds the fixed departments and the demo users in mock mode, without duplicating on a second run', async () => {
-    process.env.AUTH_MODE = 'mock';
-    await build();
-    await directory.seed();
-    await directory.seed();
+  findUser(id: string): Promise<UserEntity | null> {
+    return this.userRepository.findOneBy({ id });
+  }
 
-    const departments = await departmentRepository.find({ order: { id: 'ASC' } });
-    expect(departments.map((department) => department.id)).toEqual(['Finance', 'HR', 'IT']);
-    expect(await userRepository.count()).toBe(MOCK_USERS.length);
-  });
-
-  it('never overwrites an existing user when seeding', async () => {
-    process.env.AUTH_MODE = 'mock';
-    await build();
-    await directory.seed();
-    await userRepository.update({ id: 'it-staff-1' }, { name: 'Renamed' });
-    await directory.seed();
-
-    expect((await directory.findUser('it-staff-1'))?.name).toBe('Renamed');
-  });
-
-  it('seeds departments but no users outside mock mode', async () => {
-    process.env.AUTH_MODE = 'oidc';
-    await build();
-    await directory.seed();
-
-    expect(await departmentRepository.count()).toBe(3);
-    expect(await userRepository.count()).toBe(0);
-    expect(await directory.findUser('it-staff-1')).toBeNull();
-  });
-
-  it('lists only the staff of the requested department, in a stable order', async () => {
-    process.env.AUTH_MODE = 'mock';
-    await build();
-    await directory.seed();
-
-    expect(await directory.listStaffIds('IT')).toEqual(['it-staff-1', 'it-staff-2']);
-    expect(await directory.listStaffIds('HR')).toEqual(['hr-staff-1']);
-    expect(await directory.listStaffIds('Unknown')).toEqual([]);
-  });
-});
+  async listStaffIds(departmentId: string): Promise<string[]> {
+    const staff = await this.userRepository.find({ where: { role: 'staff', departmentId }, order: { id: 'ASC' } });
+    return staff.map((user) => user.id);
+  }
+}
