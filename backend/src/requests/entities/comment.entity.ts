@@ -1,5 +1,7 @@
-import { Column, Entity, PrimaryColumn } from 'typeorm';
+import { Column, Entity, Index, PrimaryColumn } from 'typeorm';
 
+// Index from docs/data-model.md: load a request's full thread.
+@Index('IDX_comments_request', ['requestId'])
 @Entity('comments')
 export class CommentEntry {
   @PrimaryColumn()

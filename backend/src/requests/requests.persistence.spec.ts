@@ -1,7 +1,7 @@
 import { Logger } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import { TypeOrmModule } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { DataSource, Repository } from 'typeorm';
 import { getRepositoryToken } from '@nestjs/typeorm';
 import { RequestEntity } from './entities/request.entity';
 import { StatusHistoryEntry } from './entities/status-history.entity';
@@ -17,6 +17,7 @@ import { getDatabaseConfig } from '../database.config';
 describe('request persistence integration', () => {
   let service: RequestsService;
   let notificationService: NotificationService;
+  let dataSource: DataSource;
   let requestRepository: Repository<RequestEntity>;
   let assignmentHistoryRepository: Repository<AssignmentHistoryEntry>;
   let statusHistoryRepository: Repository<StatusHistoryEntry>;
@@ -53,6 +54,7 @@ describe('request persistence integration', () => {
     }).compile();
 
     service = module.get(RequestsService);
+    dataSource = module.get(DataSource);
     notificationService = module.get(NotificationService);
     requestRepository = module.get(getRepositoryToken(RequestEntity));
     assignmentHistoryRepository = module.get(getRepositoryToken(AssignmentHistoryEntry));
@@ -226,5 +228,19 @@ describe('request persistence integration', () => {
     const history = await service.getHistory(request.id, requester);
     expect(history.map((entry) => entry.toStatus)).toEqual([RequestStatus.SUBMITTED, RequestStatus.ASSIGNED]);
     jest.restoreAllMocks();
+  });
+
+  it('creates the indexes required by docs/data-model.md', async () => {
+    const columnsOf = async (table: string, index: string) => {
+      const indexes: Array<{ name: string }> = await dataSource.query(`PRAGMA index_list('${table}')`);
+      expect(indexes.map((entry) => entry.name)).toContain(index);
+      const columns: Array<{ seqno: number; name: string }> = await dataSource.query(`PRAGMA index_info('${index}')`);
+      return columns.sort((a, b) => a.seqno - b.seqno).map((column) => column.name);
+    };
+
+    await expect(columnsOf('requests', 'IDX_requests_department_status')).resolves.toEqual(['departmentId', 'status']);
+    await expect(columnsOf('requests', 'IDX_requests_created_by')).resolves.toEqual(['createdBy']);
+    await expect(columnsOf('comments', 'IDX_comments_request')).resolves.toEqual(['requestId']);
+    await expect(columnsOf('status_history', 'IDX_status_history_request')).resolves.toEqual(['requestId']);
   });
 });
