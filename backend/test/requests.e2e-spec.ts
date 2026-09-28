@@ -51,14 +51,14 @@ describe('requests API (e2e)', () => {
 
     await request(app.getHttpServer())
       .patch(`/requests/${created.body.id}/status`)
-      .set({ 'x-user-id': 'hr-1', 'x-user-role': 'staff', 'x-department-id': 'HR' })
-      .send({ toStatus: RequestStatus.ASSIGNED, changedBy: 'hr-1' })
+      .set({ 'x-user-id': 'hr-staff-1', 'x-user-role': 'staff', 'x-department-id': 'HR' })
+      .send({ toStatus: RequestStatus.ASSIGNED, changedBy: 'hr-staff-1' })
       .expect(403);
 
     const claimed = await request(app.getHttpServer())
       .patch(`/requests/${created.body.id}/status`)
-      .set({ 'x-user-id': 'it-1', 'x-user-role': 'staff', 'x-department-id': 'IT' })
-      .send({ toStatus: RequestStatus.ASSIGNED, changedBy: 'it-1' })
+      .set({ 'x-user-id': 'it-staff-1', 'x-user-role': 'staff', 'x-department-id': 'IT' })
+      .send({ toStatus: RequestStatus.ASSIGNED, changedBy: 'it-staff-1' })
       .expect(200);
 
     expect(claimed.body.status).toBe(RequestStatus.ASSIGNED);
@@ -84,6 +84,23 @@ describe('requests API (e2e)', () => {
       if (originalAuthMode === undefined) delete process.env.AUTH_MODE;
       else process.env.AUTH_MODE = originalAuthMode;
     }
+  });
+
+  it('rejects unknown mock IDs and forged mock role or department headers', async () => {
+    await request(app.getHttpServer())
+      .get('/requests')
+      .set({ 'x-user-id': 'unknown-mock-user', 'x-user-role': 'admin', 'x-department-id': 'IT' })
+      .expect(401);
+
+    await request(app.getHttpServer())
+      .get('/requests')
+      .set({ 'x-user-id': 'employee-1', 'x-user-role': 'admin', 'x-department-id': 'IT' })
+      .expect(401);
+
+    await request(app.getHttpServer())
+      .get('/requests')
+      .set({ 'x-user-id': 'it-staff-1', 'x-user-role': 'staff', 'x-department-id': 'HR' })
+      .expect(401);
   });
 
   it('lists persisted notifications for the authenticated mock employee', async () => {

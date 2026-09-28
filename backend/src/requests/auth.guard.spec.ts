@@ -22,12 +22,38 @@ describe('AuthGuard', () => {
   it('accepts mock headers only in explicit non-production mock mode', async () => {
     process.env.AUTH_MODE = 'mock';
     process.env.NODE_ENV = 'development';
-    const request = { headers: { 'x-user-id': 'demo-employee', 'x-user-role': 'employee' } };
+    const request = { headers: { 'x-user-id': 'employee-1', 'x-user-role': 'employee' } };
     const context = { switchToHttp: () => ({ getRequest: () => request }) } as any;
 
     await expect(new AuthGuard(oidcAuthService).canActivate(context)).resolves.toBe(true);
-    expect(request).toMatchObject({ user: { id: 'demo-employee', role: 'employee' } });
+    expect(request).toMatchObject({ user: { id: 'employee-1', role: 'employee' } });
     expect(oidcAuthService.authenticate).not.toHaveBeenCalled();
+  });
+
+  it('rejects unknown mock identities and caller-selected elevated roles', async () => {
+    process.env.AUTH_MODE = 'mock';
+    process.env.NODE_ENV = 'development';
+    const guard = new AuthGuard(oidcAuthService);
+
+    await expect(guard.canActivate(contextFor({
+      'x-user-id': 'unregistered-user',
+      'x-user-role': 'admin',
+      'x-department-id': 'IT',
+    }))).rejects.toThrow('not registered');
+    await expect(guard.canActivate(contextFor({
+      'x-user-id': 'employee-1',
+      'x-user-role': 'admin',
+      'x-department-id': 'IT',
+    }))).rejects.toThrow('does not match');
+  });
+
+  it('derives department from the mock directory and rejects department spoofing', async () => {
+    process.env.AUTH_MODE = 'mock';
+    process.env.NODE_ENV = 'development';
+    const request = { headers: { 'x-user-id': 'it-staff-1', 'x-user-role': 'staff', 'x-department-id': 'HR' } };
+    const context = { switchToHttp: () => ({ getRequest: () => request }) } as any;
+
+    await expect(new AuthGuard(oidcAuthService).canActivate(context)).rejects.toThrow('x-department-id does not match');
   });
 
   it('rejects mock mode in production even if it is explicitly enabled', async () => {

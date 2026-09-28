@@ -158,6 +158,10 @@ describe('request persistence integration', () => {
       changedBy: 'it-admin-1',
     });
     await expect(statusHistoryRepository.countBy({ requestId: request.id })).resolves.toBe(1);
+    await expect(service.reassign(request.id, 'hr-staff-1', { id: 'it-admin-1', role: 'admin', departmentId: 'IT' }))
+      .rejects.toThrow('Assignee must be registered staff in the request department');
+    await expect(service.reassign(request.id, 'unknown-staff', { id: 'it-admin-1', role: 'admin', departmentId: 'IT' }))
+      .rejects.toThrow('Assignee must be registered staff in the request department');
     await expect(service.reassign(request.id, 'it-staff-3', { id: 'it-staff-1', role: 'staff', departmentId: 'IT' }))
       .rejects.toThrow('Only department admins can reassign requests');
   });

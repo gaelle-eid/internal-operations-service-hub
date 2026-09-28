@@ -11,6 +11,7 @@ import { RequestStatus } from './enums/request-status.enum';
 import { CreateRequestDto } from './dto/create-request.dto';
 import { InvalidTransitionException } from './exceptions/invalid-transition.exception';
 import { NotificationService } from './notification.service';
+import { getAuthMode, getMockActor } from './mock-directory';
 
 // The only statuses a request may legally move to next, keyed by its current
 // status. This is the single source of truth for the lifecycle rule in
@@ -148,6 +149,12 @@ export class RequestsService {
     }
     if (request.departmentId !== actor.departmentId) {
       throw new ForbiddenException('Admins can only reassign requests in their own department');
+    }
+    if (getAuthMode() === 'mock') {
+      const mockAssignee = getMockActor(newAssigneeId);
+      if (!mockAssignee || mockAssignee.role !== 'staff' || mockAssignee.departmentId !== request.departmentId) {
+        throw new ForbiddenException('Assignee must be registered staff in the request department');
+      }
     }
 
     const previousAssigneeId = request.assignedTo;

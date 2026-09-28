@@ -1,6 +1,7 @@
 import { CanActivate, ExecutionContext, Injectable, UnauthorizedException } from '@nestjs/common';
 import { RequestActor } from './requests.service';
 import { OidcAuthService } from './oidc-auth.service';
+import { getAuthMode, getMockActor } from './mock-directory';
 
 @Injectable()
 export class AuthGuard implements CanActivate {
@@ -9,7 +10,7 @@ export class AuthGuard implements CanActivate {
   async canActivate(context: ExecutionContext): Promise<boolean> {
     const request = context.switchToHttp().getRequest();
     const headers = request.headers ?? {};
-    const mode = process.env.AUTH_MODE ?? (process.env.NODE_ENV === 'test' ? 'mock' : 'oidc');
+    const mode = getAuthMode();
 
     if (mode === 'mock') {
       if (process.env.NODE_ENV === 'production') {
@@ -29,10 +30,17 @@ export class AuthGuard implements CanActivate {
   }
 
   private mockActor(headers: Record<string, string | undefined>): RequestActor {
+    const userId = headers['x-user-id'];
     const role = headers['x-user-role'];
-    if (!headers['x-user-id'] || !role || !['employee', 'staff', 'admin'].includes(role)) {
+    if (!userId || !role || !['employee', 'staff', 'admin'].includes(role)) {
       throw new UnauthorizedException('Mock mode requires x-user-id and a valid x-user-role');
     }
-    return { id: headers['x-user-id'], role: role as RequestActor['role'], departmentId: headers['x-department-id'] };
+    const registeredActor = getMockActor(userId);
+    if (!registeredActor) throw new UnauthorizedException('Mock user is not registered');
+    if (role !== registeredActor.role) throw new UnauthorizedException('x-user-role does not match the registered mock user');
+    if (headers['x-department-id'] !== registeredActor.departmentId) {
+      throw new UnauthorizedException('x-department-id does not match the registered mock user');
+    }
+    return { ...registeredActor };
   }
 }
