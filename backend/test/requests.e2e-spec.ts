@@ -10,9 +10,11 @@ jest.setTimeout(15000);
 
 describe('requests API (e2e)', () => {
   let app: INestApplication;
+  const originalAuthMode = process.env.AUTH_MODE;
 
   beforeAll(async () => {
     process.env.DB_PATH = ':memory:';
+    process.env.AUTH_MODE = 'mock';
     const module = await Test.createTestingModule({ imports: [AppModule] })
       .overrideProvider(RequestyIntakeProvider)
       .useValue({
@@ -33,7 +35,11 @@ describe('requests API (e2e)', () => {
     await app.init();
   });
 
-  afterAll(async () => app.close());
+  afterAll(async () => {
+    await app.close();
+    if (originalAuthMode === undefined) delete process.env.AUTH_MODE;
+    else process.env.AUTH_MODE = originalAuthMode;
+  });
 
   it('submits, claims, and blocks a cross-department staff member', async () => {
     const employeeHeaders = { 'x-user-id': 'employee-1', 'x-user-role': 'employee' };
@@ -66,9 +72,24 @@ describe('requests API (e2e)', () => {
       .expect(400);
   });
 
+  it('rejects caller-supplied identity headers when OIDC authentication is required', async () => {
+    const originalAuthMode = process.env.AUTH_MODE;
+    process.env.AUTH_MODE = 'oidc';
+    try {
+      await request(app.getHttpServer())
+        .get('/requests')
+        .set({ 'x-user-id': 'forged-admin', 'x-user-role': 'admin', 'x-department-id': 'IT' })
+        .expect(401);
+    } finally {
+      if (originalAuthMode === undefined) delete process.env.AUTH_MODE;
+      else process.env.AUTH_MODE = originalAuthMode;
+    }
+  });
+
   it('returns a bounded intake candidate without creating a request', async () => {
     const ready = await request(app.getHttpServer())
       .post('/requests/intake')
+      .set({ 'x-user-id': 'employee-1', 'x-user-role': 'employee' })
       .send({ text: 'My laptop will not boot and I cannot work' })
       .expect(201);
 
@@ -79,6 +100,7 @@ describe('requests API (e2e)', () => {
 
     const unclear = await request(app.getHttpServer())
       .post('/requests/intake')
+      .set({ 'x-user-id': 'employee-1', 'x-user-role': 'employee' })
       .send({ text: 'I need help with something' })
       .expect(201);
 

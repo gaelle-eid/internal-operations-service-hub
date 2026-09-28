@@ -11,6 +11,8 @@ import { AgentService } from './agent.service';
 import { NotificationEntry } from './entities/notification.entity';
 import { NotificationService } from './notification.service';
 import { AssignmentHistoryEntry } from './entities/assignment-history.entity';
+import { OidcAuthService } from './oidc-auth.service';
+import { AuthGuard } from './auth.guard';
 
 @Module({
   imports: [TypeOrmModule.forFeature([RequestEntity, StatusHistoryEntry, CommentEntry, NotificationEntry, AssignmentHistoryEntry])],
@@ -20,6 +22,8 @@ import { AssignmentHistoryEntry } from './entities/assignment-history.entity';
     IntakeService,
     AgentService,
     NotificationService,
+    OidcAuthService,
+    AuthGuard,
     RequestyIntakeProvider,
     {
       provide: INTAKE_PROVIDER,

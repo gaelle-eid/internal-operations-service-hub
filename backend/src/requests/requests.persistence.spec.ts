@@ -20,23 +20,6 @@ describe('request persistence integration', () => {
   let assignmentHistoryRepository: Repository<AssignmentHistoryEntry>;
   let statusHistoryRepository: Repository<StatusHistoryEntry>;
 
-  it('requires authenticated user headers for all access', () => {
-    const guard = new AuthGuard();
-    const validContext = {
-      switchToHttp: () => ({
-        getRequest: () => ({ headers: { 'x-user-id': 'employee-1', 'x-user-role': 'employee' } }),
-      }),
-    } as any;
-    const invalidContext = {
-      switchToHttp: () => ({
-        getRequest: () => ({ headers: { 'x-user-id': 'employee-1' } }),
-      }),
-    } as any;
-
-    expect(guard.canActivate(validContext)).toBe(true);
-    expect(() => guard.canActivate(invalidContext)).toThrow('x-user-id and x-user-role headers are required');
-  });
-
   it('uses postgres settings when postgres env vars are configured', () => {
     const previous = { ...process.env };
     process.env.DB_TYPE = 'postgres';

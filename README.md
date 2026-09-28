@@ -1,6 +1,6 @@
 # Internal Operations Service Hub
 
-v0.4 is a local demo of an internal Service Request flow with Requesty-powered advisory intake and a read-only assistant. Request records and related events are persisted in local SQLite, but the identity is mock: the frontend always acts as `employee-1`, and the API accepts caller-supplied identity headers rather than verifying a login. Example IDs and test payloads are mock data. Do not enter real employee or confidential information. This is not production authentication or an employee directory.
+v0.4 is a local demo of an internal Service Request flow with Requesty-powered advisory intake and a read-only assistant. Request records and related events are persisted in local SQLite. The frontend supports configurable OIDC login, and the API verifies configured OIDC Bearer tokens; the company tenant is not configured in this repository. Local demo mode uses mock identity (`employee-1`) and caller-supplied headers. Example IDs and test payloads are mock data. Do not enter real employee or confidential information. This is not yet a production deployment or an employee directory.
 
 The backend implements request validation, lifecycle transitions, comments, in-app notifications, admin reassignment, and append-only status and assignment history. The current UI is employee-oriented; it does not yet render comment or notification threads, provide staff/admin queue controls, or support the documented search/filter and sorting workflows. See [docs/workflow.md](docs/workflow.md) for the implementation boundary and remaining work.
 
@@ -28,6 +28,10 @@ REQUESTY_BASE_URL=https://router.requesty.ai/v1/chat/completions
 ```
 
 The backend uses Requesty only. Never put the real key in Markdown, source code, or a committed file.
+
+## Authentication modes
+
+Copy `backend/.env.example` and `frontend/.env.example` to `.env` files for local setup. The examples explicitly enable a mock `employee-1` identity for local demos only; do not use real employee information with it, and mock auth is rejected in production. To use the company login, configure both apps for OIDC using the issuer, API audience, JWKS URI, SPA client ID, API scope, and trusted subject/role/department claim mapping supplied by the identity provider administrator. The SPA uses Authorization Code + PKCE; the API verifies Bearer access tokens. The repository contains no company tenant values, so a real login cannot complete until those are supplied.
 
 ## Install and run
 
@@ -121,7 +125,7 @@ The chatbot currently has read-only tools only: `get_request_status` and `find_r
 
 ## API contract
 
-Mock development identity headers (not authentication):
+Local mock-mode headers only (not authentication):
 
 ```text
 x-user-id       actor identifier
@@ -137,13 +141,13 @@ x-department-id required for staff/admin requests
 | GET | `/requests` | Employee's own requests or staff department queue |
 | GET | `/requests/:id` | Read one authorized request |
 | GET | `/requests/:id/history` | Read append-only status history |
-| PATCH | `/requests/:id/status` | Apply `SUBMITTED -> ASSIGNED -> IN_PROGRESS` |
+| PATCH | `/requests/:id/status` | Apply a valid lifecycle transition |
 | GET | `/requests/:id/comments` | Read an authorized request's comments |
 | POST | `/requests/:id/comments` | Append a comment |
-| GET | `/requests/notifications` | List the caller header's notifications |
+| GET | `/requests/notifications` | List the authenticated user's notifications |
 | PATCH | `/requests/:id/reassign` | Reassign as a department admin; assignment is audited |
 
-The lifecycle API supports `SUBMITTED`, `ASSIGNED`, `IN_PROGRESS`, `WAITING_ON_REQUESTER`, `RESOLVED`, and `CLOSED`. The agent supports `get_request_status` for a selected request or UUID and `find_request_by_name_date` for a request title plus creation date. The backend validates the tool call and applies its current header-based access checks before reading data. These checks do not authenticate the caller.
+The lifecycle API supports `SUBMITTED`, `ASSIGNED`, `IN_PROGRESS`, `WAITING_ON_REQUESTER`, `RESOLVED`, and `CLOSED`. The agent supports `get_request_status` for a selected request or UUID and `find_request_by_name_date` for a request title plus creation date. The backend validates the tool call and applies access checks using verified OIDC claims in OIDC mode or explicitly enabled mock headers in local demo mode.
 
 ## Tests and builds
 

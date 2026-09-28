@@ -2,7 +2,7 @@
 
 ## Current demo boundary
 
-The architecture below describes the target system. The current demo uses a hardcoded frontend actor and caller-supplied identity headers; the API does not verify the company's login system. Request and event records are persisted locally in SQLite, but user/department identities are mock values and no `User` or `Department` tables exist yet. Do not treat this demo as production-secure or enter real employee/confidential data. Current implementation details are tracked in [workflow.md](workflow.md).
+The architecture below describes the target system. The current code supports configurable OIDC Authorization Code + PKCE in the browser and JWT verification in the API, but the company tenant and claim mapping are not configured. Local mock-header identity remains available for demos and tests only; it is rejected in production. Request and event records are persisted locally in SQLite, but user/department identities are still claim strings and no `User` or `Department` tables exist yet. Do not treat this demo as production-ready or enter real employee/confidential data. Current implementation details are tracked in [workflow.md](workflow.md).
 
 **Requirements driving the design:** Employees need one place to submit requests to IT, HR, or Finance, track their status, and communicate with whoever is resolving them. Department staff need a list of the requests assigned to them, they can accept the request, update its status and reassign it if needed, and a comment thread. History must be preserved and auditable, and each department must only see its own requests
 

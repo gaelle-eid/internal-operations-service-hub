@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Headers, Param, Patch, Post, UnauthorizedException, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Param, Patch, Post, UseGuards } from '@nestjs/common';
 import { RequestActor, RequestsService } from './requests.service';
 import { CreateRequestDto } from './dto/create-request.dto';
 import { TransitionRequestDto } from './dto/transition-request.dto';
@@ -8,6 +8,7 @@ import { AgentRequestDto } from './dto/agent-request.dto';
 import { AgentService } from './agent.service';
 import { AuthGuard } from './auth.guard';
 import { NotificationService } from './notification.service';
+import { CurrentActor } from './current-actor.decorator';
 
 @Controller('requests')
 @UseGuards(AuthGuard)
@@ -25,55 +26,54 @@ export class RequestsController {
   }
 
   @Post('agent')
-  agent(@Body() dto: AgentRequestDto, @Headers() headers: Record<string, string>) {
-    return this.agentService.respond(dto.message, this.actor(headers), dto.requestId);
+  agent(@Body() dto: AgentRequestDto, @CurrentActor() actor: RequestActor) {
+    return this.agentService.respond(dto.message, actor, dto.requestId);
   }
 
   // Submits a new request. Always starts at SUBMITTED (docs/product-spec.md).
   @Post()
-  create(@Body() dto: CreateRequestDto, @Headers() headers: Record<string, string>) {
-    return this.requestsService.create(dto, this.actor(headers));
+  create(@Body() dto: CreateRequestDto, @CurrentActor() actor: RequestActor) {
+    return this.requestsService.create(dto, actor);
   }
 
   @Get()
-  findAll(@Headers() headers: Record<string, string>) {
-    return this.requestsService.findAll(this.actor(headers));
+  findAll(@CurrentActor() actor: RequestActor) {
+    return this.requestsService.findAll(actor);
   }
 
   @Get(':id')
-  findOne(@Param('id') id: string, @Headers() headers: Record<string, string>) {
-    return this.requestsService.findOne(id, this.actor(headers));
+  findOne(@Param('id') id: string, @CurrentActor() actor: RequestActor) {
+    return this.requestsService.findOne(id, actor);
   }
 
   // The append-only audit trail for one request.
   @Get(':id/history')
-  getHistory(@Param('id') id: string, @Headers() headers: Record<string, string>) {
-    return this.requestsService.getHistory(id, this.actor(headers));
+  getHistory(@Param('id') id: string, @CurrentActor() actor: RequestActor) {
+    return this.requestsService.getHistory(id, actor);
   }
 
   @Get(':id/comments')
-  getComments(@Param('id') id: string, @Headers() headers: Record<string, string>) {
-    return this.requestsService.getComments(id, this.actor(headers));
+  getComments(@Param('id') id: string, @CurrentActor() actor: RequestActor) {
+    return this.requestsService.getComments(id, actor);
   }
 
   @Get('notifications')
-  getNotifications(@Headers() headers: Record<string, string>) {
-    const actor = this.actor(headers);
+  getNotifications(@CurrentActor() actor: RequestActor) {
     return this.notificationService.listForUser(actor.id);
   }
 
   @Post(':id/comments')
   addComment(
     @Param('id') id: string,
-    @Body() body: { body: string; authorId: string },
-    @Headers() headers: Record<string, string>,
+    @Body() body: { body: string },
+    @CurrentActor() actor: RequestActor,
   ) {
-    return this.requestsService.addComment(id, body.authorId, body.body, this.actor(headers));
+    return this.requestsService.addComment(id, actor.id, body.body, actor);
   }
 
   @Patch(':id/reassign')
-  reassign(@Param('id') id: string, @Body() body: { assignedTo: string }, @Headers() headers: Record<string, string>) {
-    return this.requestsService.reassign(id, body.assignedTo, this.actor(headers));
+  reassign(@Param('id') id: string, @Body() body: { assignedTo: string }, @CurrentActor() actor: RequestActor) {
+    return this.requestsService.reassign(id, body.assignedTo, actor);
   }
 
   // One generic transition endpoint rather than one per status, so the
@@ -81,15 +81,7 @@ export class RequestsController {
   // adding new routes — only the VALID_TRANSITIONS map in the service
   // needs to change.
   @Patch(':id/status')
-  transition(@Param('id') id: string, @Body() dto: TransitionRequestDto, @Headers() headers: Record<string, string>) {
-    return this.requestsService.transition(id, dto.toStatus, dto.changedBy, this.actor(headers));
-  }
-
-  private actor(headers: Record<string, string>): RequestActor {
-    const role = headers['x-user-role'] as RequestActor['role'];
-    if (!headers['x-user-id'] || !['employee', 'staff', 'admin'].includes(role)) {
-      throw new UnauthorizedException('x-user-id and x-user-role headers are required');
-    }
-    return { id: headers['x-user-id'], role, departmentId: headers['x-department-id'] };
+  transition(@Param('id') id: string, @Body() dto: TransitionRequestDto, @CurrentActor() actor: RequestActor) {
+    return this.requestsService.transition(id, dto.toStatus, dto.changedBy, actor);
   }
 }

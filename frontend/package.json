@@ -3,7 +3,21 @@
   "private": true,
   "version": "0.3.0",
   "type": "module",
-  "scripts": {"dev": "vite", "build": "tsc -b && vite build"},
-  "dependencies": {"@vitejs/plugin-react": "latest", "vite": "latest", "typescript": "^5.4.0", "react": "latest", "react-dom": "latest", "lucide-react": "latest"},
-  "devDependencies": {"@types/react": "latest", "@types/react-dom": "latest"}
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -b && vite build"
+  },
+  "dependencies": {
+    "@vitejs/plugin-react": "latest",
+    "lucide-react": "latest",
+    "oidc-client-ts": "^3.5.0",
+    "react": "latest",
+    "react-dom": "latest",
+    "typescript": "^5.4.0",
+    "vite": "latest"
+  },
+  "devDependencies": {
+    "@types/react": "latest",
+    "@types/react-dom": "latest"
+  }
 }

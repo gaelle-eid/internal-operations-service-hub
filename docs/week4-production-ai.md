@@ -9,8 +9,11 @@ Example:
 ```bash
 curl -X POST http://localhost:3000/requests/intake \
   -H "Content-Type: application/json" \
+  -H "Authorization: Bearer <company-access-token>" \
   -d '{"text":"My laptop will not boot and I cannot work"}'
 ```
+
+Use an access token issued for the configured API audience. In local mock mode, use the `x-user-id` and `x-user-role` headers from `frontend/.env.example` instead; those headers are not authentication and must not be used in production.
 
 The result is one of:
 

@@ -1,27 +1,73 @@
 import { createRoot, type Root } from 'react-dom/client';
 import { FormEvent, useEffect, useState } from 'react';
 import { Bot, CheckCircle2, ChevronRight, CircleAlert, Inbox, Plus, Send, ShieldCheck, Sparkles } from 'lucide-react';
+import { User, UserManager, WebStorageStateStore } from 'oidc-client-ts';
 import './styles.css';
 
 type Status = 'SUBMITTED' | 'ASSIGNED' | 'IN_PROGRESS' | 'WAITING_ON_REQUESTER' | 'RESOLVED' | 'CLOSED';
 type ServiceRequest = { id: string; title: string; description: string; category: string; priority: string; departmentId: string; status: Status; assignedTo: string | null; createdAt: string };
 type Comment = { id: string; requestId: string; authorId: string; body: string; createdAt: string };
-type Notification = { id: string; userId: string; requestId: string; type: 'STATUS_CHANGE' | 'COMMENT'; message: string; createdAt: string; readAt: string | null };
+type Notification = { id: string; userId: string; requestId: string; type: 'STATUS_CHANGE' | 'COMMENT' | 'REASSIGNMENT'; message: string; createdAt: string; readAt: string | null };
 type IntakeResponse = { outcome: 'READY' | 'NEEDS_CLARIFICATION' | 'INVALID_AI_OUTPUT' | 'PROVIDER_UNAVAILABLE'; candidate: { title: string; description: string; category: string; priority: string; departmentId: string } | null; clarification?: string };
 type AgentResponse = { outcome: string; message?: string; tool?: string; result?: { id: string; title: string; status: Status; departmentId: string; assignedTo: string | null } };
-type Actor = { id: string; role: 'employee' | 'staff'; departmentId?: string };
+type Actor = { id: string; role: 'employee' | 'staff' | 'admin'; departmentId?: string };
 
 const API = import.meta.env.VITE_API_URL ?? 'http://localhost:3000';
-const actor: Actor = { id: 'employee-1', role: 'employee' };
-const headers = () => ({ 'Content-Type': 'application/json', 'x-user-id': actor.id, 'x-user-role': actor.role, ...(actor.departmentId ? { 'x-department-id': actor.departmentId } : {}) });
+const AUTH_MODE = import.meta.env.VITE_AUTH_MODE ?? 'oidc';
+const MOCK_ACTOR: Actor = { id: 'employee-1', role: 'employee' };
+let accessToken: string | undefined;
+let mockActor: Actor | undefined;
+
+const oidcSettings = {
+  authority: import.meta.env.VITE_OIDC_AUTHORITY,
+  client_id: import.meta.env.VITE_OIDC_CLIENT_ID,
+  redirect_uri: `${window.location.origin}/auth/callback`,
+  post_logout_redirect_uri: `${window.location.origin}/auth/signed-out`,
+  response_type: 'code',
+  scope: `openid profile email ${import.meta.env.VITE_OIDC_API_SCOPE ?? ''}`.trim(),
+  userStore: new WebStorageStateStore({ store: window.sessionStorage }),
+  automaticSilentRenew: false,
+  monitorSession: false,
+};
+
+const userManager = oidcSettings.authority && oidcSettings.client_id
+  ? new UserManager(oidcSettings)
+  : undefined;
+
+function actorFromUser(user: User): Actor | undefined {
+  const profile = user.profile as Record<string, unknown>;
+  const subject = profile[import.meta.env.VITE_OIDC_SUBJECT_CLAIM || 'sub'];
+  const rawRole = profile[import.meta.env.VITE_OIDC_ROLE_CLAIM || 'role'];
+  const roleValues = Array.isArray(rawRole) ? rawRole : [rawRole];
+  let roleMapping: Record<string, string> = {};
+  try { roleMapping = JSON.parse(import.meta.env.VITE_OIDC_ROLE_MAP || '{}'); } catch { return undefined; }
+  const mappedRole = roleValues
+    .filter((value): value is string => typeof value === 'string')
+    .map(value => roleMapping[value] ?? value)
+    .find(value => ['employee', 'staff', 'admin'].includes(value));
+  if (typeof subject !== 'string' || !['employee', 'staff', 'admin'].includes(mappedRole ?? '')) return undefined;
+  const departmentClaim = profile[import.meta.env.VITE_OIDC_DEPARTMENT_CLAIM || 'departmentId'];
+  return { id: subject, role: mappedRole as Actor['role'], departmentId: typeof departmentClaim === 'string' ? departmentClaim : undefined };
+}
 
 async function api<T>(path: string, options: RequestInit = {}): Promise<T> {
-  const response = await fetch(`${API}${path}`, { ...options, headers: { ...headers(), ...(options.headers ?? {}) } });
+  const requestHeaders: Record<string, string> = { 'Content-Type': 'application/json', ...(options.headers as Record<string, string> ?? {}) };
+  if (accessToken) requestHeaders.Authorization = `Bearer ${accessToken}`;
+  else if (mockActor) {
+    requestHeaders['x-user-id'] = mockActor.id;
+    requestHeaders['x-user-role'] = mockActor.role;
+    if (mockActor.departmentId) requestHeaders['x-department-id'] = mockActor.departmentId;
+  }
+  const response = await fetch(`${API}${path}`, { ...options, headers: requestHeaders });
   if (!response.ok) { const body = await response.json().catch(() => ({})); throw new Error(body.message ?? `Request failed (${response.status})`); }
   return response.json();
 }
 
 function App() {
+  const [authLoading, setAuthLoading] = useState(AUTH_MODE !== 'mock');
+  const [authError, setAuthError] = useState('');
+  const [oidcUser, setOidcUser] = useState<User | null>(null);
+  const [actor, setActor] = useState<Actor | null>(AUTH_MODE === 'mock' ? MOCK_ACTOR : null);
   const [requests, setRequests] = useState<ServiceRequest[]>([]);
   const [selected, setSelected] = useState<ServiceRequest | null>(null);
   const [error, setError] = useState('');
@@ -41,11 +87,68 @@ function App() {
   const loadNotifications = async () => { try { setNotifications(await api<Notification[]>('/requests/notifications')); } catch (err) { setNotifications([]); } };
   const loadComments = async (requestId: string) => { try { setComments(await api<Comment[]>(`/requests/${requestId}/comments`)); } catch (err) { setComments([]); } };
   const load = async () => { try { setRequests(await api<ServiceRequest[]>('/requests')); setError(''); } catch (err) { setError(err instanceof Error ? err.message : 'Could not connect to the service'); } };
-  useEffect(() => { load(); loadNotifications(); }, []);
-  useEffect(() => { if (selected) { loadComments(selected.id); } else { setComments([]); } }, [selected]);
+  useEffect(() => {
+    if (AUTH_MODE === 'mock') {
+      if (import.meta.env.PROD) {
+        setAuthError('Mock authentication is disabled in production builds.');
+        setAuthLoading(false);
+        return;
+      }
+      mockActor = MOCK_ACTOR;
+      accessToken = undefined;
+      setAuthLoading(false);
+      return;
+    }
+    if (AUTH_MODE !== 'oidc' || !userManager || !import.meta.env.VITE_OIDC_API_SCOPE) {
+      setAuthError('Configure OIDC authority, client ID, and API scope, or explicitly enable mock mode for local development.');
+      setAuthLoading(false);
+      return;
+    }
+    const authenticate = async () => {
+      try {
+        if (window.location.pathname === '/auth/signed-out') {
+          await userManager.removeUser();
+          window.history.replaceState({}, document.title, '/');
+          setAuthError('You have signed out.');
+          setAuthLoading(false);
+          return;
+        }
+        if (window.location.pathname === '/auth/callback') {
+          await userManager.signinRedirectCallback();
+          window.history.replaceState({}, document.title, '/');
+        }
+        let user = await userManager.getUser();
+        if (!user || user.expired) {
+          if (user) await userManager.removeUser();
+          await userManager.signinRedirect();
+          return;
+        }
+        const verifiedActor = actorFromUser(user);
+        if (!verifiedActor) throw new Error('The ID token is missing configured subject or role claims.');
+        accessToken = user.access_token;
+        mockActor = undefined;
+        setOidcUser(user);
+        setActor(verifiedActor);
+        setAuthLoading(false);
+      } catch (err) {
+        setAuthError(err instanceof Error ? err.message : 'Could not complete company login.');
+        setAuthLoading(false);
+      }
+    };
+    void authenticate();
+  }, []);
+
+  useEffect(() => { if (actor && !authLoading) { void load(); void loadNotifications(); } }, [actor, authLoading]);
+  useEffect(() => { if (actor && selected) { void loadComments(selected.id); } else { setComments([]); } }, [selected, actor]);
+
+  const signOut = async () => {
+    if (userManager && oidcUser) await userManager.signoutRedirect();
+    else { accessToken = undefined; mockActor = undefined; setActor(null); }
+  };
 
   const submit = async (event: FormEvent) => {
     event.preventDefault();
+    if (!actor) return;
     try { const created = await api<ServiceRequest>('/requests', { method: 'POST', body: JSON.stringify({ ...form, createdBy: actor.id }) }); setForm({ title: '', description: '', category: 'Hardware', priority: 'Medium', departmentId: 'IT' }); setShowForm(false); setSelected(created); await load(); }
     catch (err) { setError(err instanceof Error ? err.message : 'Could not submit request'); }
   };
@@ -89,10 +192,10 @@ function App() {
   };
 
   const addComment = async () => {
-    if (!selected || !commentText.trim()) return;
+    if (!actor || !selected || !commentText.trim()) return;
     setCommenting(true);
     try {
-      await api(`/requests/${selected.id}/comments`, { method: 'POST', body: JSON.stringify({ authorId: actor.id, body: commentText }) });
+      await api(`/requests/${selected.id}/comments`, { method: 'POST', body: JSON.stringify({ body: commentText }) });
       setCommentText('');
       await loadComments(selected.id);
       await loadNotifications();
@@ -103,8 +206,11 @@ function App() {
     }
   };
 
+  if (authLoading) return <div className="auth-state">Connecting to company login...</div>;
+  if (authError || !actor) return <div className="auth-state"><ShieldCheck size={24} /><h1>{authError === 'You have signed out.' ? 'Signed out' : 'Sign-in unavailable'}</h1><p>{authError || 'No signed-in identity is available.'}</p>{authError === 'You have signed out.' && userManager && <button className="primary-button" type="button" onClick={() => void userManager.signinRedirect()}>Sign in</button>}</div>;
+
   return <div className="app-shell">
-    <aside className="sidebar"><div className="brand"><span className="brand-mark"><ShieldCheck size={18} /></span><span>service<br /><strong>hub</strong></span></div><div className="nav-label">Workspace</div><div className="nav-item active"><Inbox size={17} /> My requests <span className="nav-count">{requests.length}</span></div><div className="sidebar-footer"><div className="avatar">GM</div><div><strong>Gaelle Martin</strong><small>Employee · Internal</small></div></div></aside>
+    <aside className="sidebar"><div className="brand"><span className="brand-mark"><ShieldCheck size={18} /></span><span>service<br /><strong>hub</strong></span></div><div className="nav-label">Workspace</div><div className="nav-item active"><Inbox size={17} /> My requests <span className="nav-count">{requests.length}</span></div><div className="sidebar-footer"><div className="avatar">{actor.id.slice(0, 2).toUpperCase()}</div><div><strong>{actor.id}</strong><small>{AUTH_MODE === 'mock' ? 'Mock demo identity' : actor.role}</small>{userManager && oidcUser && <button className="signout-button" type="button" onClick={signOut}>Sign out</button>}</div></div></aside>
     <main className="main-content"><header className="topbar"><div><p className="eyebrow">Internal operations</p><h1>My requests</h1></div><button className="primary-button" onClick={openForm}><Plus size={17} /> New request</button></header>
       {error && <div className="alert"><CircleAlert size={17} /> {error}</div>}
       <section className="intro"><div><span className="section-kicker">Your service desk</span><h2>Make work move.</h2><p>Submit an internal request and keep every handoff visible.</p></div><div className="intro-stat"><strong>{requests.length.toString().padStart(2, '0')}</strong><span>open requests</span></div></section>
