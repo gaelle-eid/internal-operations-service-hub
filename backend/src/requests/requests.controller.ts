@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Headers, Param, Patch, Post, UnauthorizedException } from '@nestjs/common';
+import { Body, Controller, Get, Headers, Param, Patch, Post, UnauthorizedException, UseGuards } from '@nestjs/common';
 import { RequestActor, RequestsService } from './requests.service';
 import { CreateRequestDto } from './dto/create-request.dto';
 import { TransitionRequestDto } from './dto/transition-request.dto';
@@ -6,8 +6,10 @@ import { IntakeRequestDto } from './dto/intake-request.dto';
 import { IntakeService } from './intake/intake.service';
 import { AgentRequestDto } from './dto/agent-request.dto';
 import { AgentService } from './agent.service';
+import { AuthGuard } from './auth.guard';
 
 @Controller('requests')
+@UseGuards(AuthGuard)
 export class RequestsController {
   constructor(
     private readonly requestsService: RequestsService,

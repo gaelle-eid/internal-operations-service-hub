@@ -9,11 +9,29 @@ import { NotificationEntry } from './entities/notification.entity';
 import { RequestStatus } from './enums/request-status.enum';
 import { RequestsService } from './requests.service';
 import { NotificationService } from './notification.service';
+import { AuthGuard } from './auth.guard';
 
 describe('request persistence integration', () => {
   let service: RequestsService;
   let notificationService: NotificationService;
   let requestRepository: Repository<RequestEntity>;
+
+  it('requires authenticated user headers for all access', () => {
+    const guard = new AuthGuard();
+    const validContext = {
+      switchToHttp: () => ({
+        getRequest: () => ({ headers: { 'x-user-id': 'employee-1', 'x-user-role': 'employee' } }),
+      }),
+    } as any;
+    const invalidContext = {
+      switchToHttp: () => ({
+        getRequest: () => ({ headers: { 'x-user-id': 'employee-1' } }),
+      }),
+    } as any;
+
+    expect(guard.canActivate(validContext)).toBe(true);
+    expect(() => guard.canActivate(invalidContext)).toThrow('x-user-id and x-user-role headers are required');
+  });
 
   beforeEach(async () => {
     const module = await Test.createTestingModule({
