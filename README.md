@@ -1,6 +1,8 @@
 # Internal Operations Service Hub
 
-v0.4 is a full-stack internal Service Request flow with Requesty-powered advisory intake and a read-only assistant. Employees can turn free text into a bounded candidate, review it, submit the request, and ask about an accessible request by selected context or name and date. The backend owns validation, authorization, lifecycle rules, and append-only status history.
+v0.4 is a local demo of an internal Service Request flow with Requesty-powered advisory intake and a read-only assistant. Request records and related events are persisted in local SQLite, but the identity is mock: the frontend always acts as `employee-1`, and the API accepts caller-supplied identity headers rather than verifying a login. Example IDs and test payloads are mock data. Do not enter real employee or confidential information. This is not production authentication or an employee directory.
+
+The backend implements request validation, lifecycle transitions, comments, in-app notifications, admin reassignment, and append-only status and assignment history. The current UI is employee-oriented; it does not yet render comment or notification threads, provide staff/admin queue controls, or support the documented search/filter and sorting workflows. See [docs/workflow.md](docs/workflow.md) for the implementation boundary and remaining work.
 
 ## Repository
 
@@ -119,7 +121,7 @@ The chatbot currently has read-only tools only: `get_request_status` and `find_r
 
 ## API contract
 
-Identity headers:
+Mock development identity headers (not authentication):
 
 ```text
 x-user-id       actor identifier
@@ -136,8 +138,12 @@ x-department-id required for staff/admin requests
 | GET | `/requests/:id` | Read one authorized request |
 | GET | `/requests/:id/history` | Read append-only status history |
 | PATCH | `/requests/:id/status` | Apply `SUBMITTED -> ASSIGNED -> IN_PROGRESS` |
+| GET | `/requests/:id/comments` | Read an authorized request's comments |
+| POST | `/requests/:id/comments` | Append a comment |
+| GET | `/requests/notifications` | List the caller header's notifications |
+| PATCH | `/requests/:id/reassign` | Reassign as a department admin; assignment is audited |
 
-The agent supports `get_request_status` for a selected request or UUID and `find_request_by_name_date` for a request title plus creation date. The backend validates the tool call and applies authorization before reading data.
+The lifecycle API supports `SUBMITTED`, `ASSIGNED`, `IN_PROGRESS`, `WAITING_ON_REQUESTER`, `RESOLVED`, and `CLOSED`. The agent supports `get_request_status` for a selected request or UUID and `find_request_by_name_date` for a request title plus creation date. The backend validates the tool call and applies its current header-based access checks before reading data. These checks do not authenticate the caller.
 
 ## Tests and builds
 

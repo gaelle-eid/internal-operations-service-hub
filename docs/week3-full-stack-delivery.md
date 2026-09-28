@@ -1,4 +1,6 @@
-# Week 3 full-stack delivery
+# Week 3 full-stack delivery (historical milestone)
+
+This document records the v0.3 delivery slice, not the current implementation status. See [workflow.md](workflow.md) for the current state. IDs in examples and identity headers are mock values; the headers are not verified authentication. Requests created in local development are persisted in SQLite, so treat all entered content as demo data and do not use real employee or confidential information.
 
 ## Delivered slice
 

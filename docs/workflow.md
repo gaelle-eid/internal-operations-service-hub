@@ -1,81 +1,61 @@
-# Workflow: Request Lifecycle API (NestJS)
+# Current workflow and implementation status
 
-This describes the business logic implemented in `backend/src/requests/`, and how it ties back to `docs/product-spec.md`, `docs/architecture.md`, and `docs/data-model.md`.
+This page describes the current code and distinguishes it from the target requirements in [product-spec.md](product-spec.md), [architecture.md](architecture.md), and [data-model.md](data-model.md).
 
-## What's implemented now
+## Mock identity and data
 
-A **status lifecycle** for the `Request` entity, covering the first two steps: `SUBMITTED → ASSIGNED → IN_PROGRESS`. There is no UI and no authentication yet — this is API-only, built to prove the lifecycle rules work before anything else is layered on.
+- The frontend hardcodes the demo actor `employee-1` and sends `x-user-id`, `x-user-role`, and optional `x-department-id` headers.
+- The backend guard checks those caller-supplied headers but does not verify a company login or token. They are mock identity inputs, not authentication; anyone able to call the API can claim another ID or role.
+- Requests, comments, notifications, status history, and assignment history are persisted locally in SQLite by default. This is persistent demo data, not a directory of real employees. Use mock/example content only; do not enter real employee or confidential information.
+- The current schema has no persisted `User` or `Department` entities. User and department IDs on records are strings, not foreign-key relationships.
+- PostgreSQL connection configuration exists, but migrations and the documented relational constraints are not yet implemented. SQLite remains the local default.
 
-> **Note — deviation from the current docs:** `docs/product-spec.md` and `docs/data-model.md` currently define the lifecycle as `Submitted → In Progress → Waiting on Requester → Resolved → Closed` — with no `Assigned` state; a staff member "claims" a request and it goes straight to `In Progress`. This implementation adds `ASSIGNED` as its own step between `Submitted` and `In Progress`, representing "a staff member has taken ownership but hasn't started work yet." The remaining states (`WAITING_ON_REQUESTER`, `RESOLVED`, `CLOSED`) aren't implemented yet. **The docs should be updated to include `ASSIGNED` once this is confirmed** — flagging this rather than changing them unilaterally.
+## Implemented backend behavior
 
-## Where the business logic lives
+- Requests start at `SUBMITTED`; valid transitions are `SUBMITTED -> ASSIGNED -> IN_PROGRESS -> WAITING_ON_REQUESTER -> RESOLVED -> CLOSED`, with `WAITING_ON_REQUESTER -> IN_PROGRESS` and `RESOLVED -> IN_PROGRESS` allowed.
+- Employees are filtered to their own requests. Staff/admin access is filtered by the department ID in the mock headers.
+- Comments are append-only through the API. Status changes and assignments have separate append-only history records.
+- Department admins can reassign requests in their own department. Because there is no trusted user directory, the API cannot yet verify that the target assignee belongs to that department or is a manager.
+- In-app status, comment, and reassignment notifications are persisted by the backend.
+- Requesty intake returns an advisory candidate; the read-only assistant can query accessible requests. Automated tests mock provider responses.
 
-All lifecycle logic is in **`requests.service.ts`** — not the controller, and not the client. This matches `docs/architecture.md`'s Trust + Resilience section, which requires rules to be enforced server-side rather than assumed by a UI.
+## Current UI boundary
 
-**The transition rule is one map:**
-```ts
-const VALID_TRANSITIONS: Record<RequestStatus, RequestStatus[]> = {
-  [RequestStatus.SUBMITTED]: [RequestStatus.ASSIGNED],
-  [RequestStatus.ASSIGNED]: [RequestStatus.IN_PROGRESS],
-  [RequestStatus.IN_PROGRESS]: [],
-};
-```
-`transition()` looks up the request's current status, checks whether the requested `toStatus` is in its allowed list, and throws `InvalidTransitionException` (a 400) if not. This is why `SUBMITTED → IN_PROGRESS` is rejected: `IN_PROGRESS` isn't in `VALID_TRANSITIONS[SUBMITTED]`.
+The UI is an employee demo with a hardcoded actor, request list/detail, intake form, and assistant. It does not yet render the comment or notification data, provide staff/admin queues or reassignment controls, or implement the documented employee search/filters and admin sorting.
 
-**One generic endpoint, not one per transition:** `PATCH /requests/:id/status` handles every transition, rather than having a separate `/assign` and `/start` route. This means the lifecycle can grow later (adding `WAITING_ON_REQUESTER`, `RESOLVED`, `CLOSED`) by only editing the `VALID_TRANSITIONS` map — no new routes needed.
+## API routes
 
-**Append-only history:** every successful transition — including the initial `SUBMITTED` on creation — calls `recordHistory()`, which pushes a new `StatusHistoryEntry` and never edits or deletes one. This directly implements `docs/decisions/ADR-001.md`'s decision and `docs/data-model.md`'s `StatusHistory` entity. There is no method anywhere in the service that updates or removes a history entry.
-
-**In-memory store for now:** `requests` and `history` are plain arrays inside the service, not a database. `docs/decisions/ADR-001.md` documents the plan to move this to PostgreSQL — the entity shapes here already match `docs/data-model.md`'s attribute lists, so that swap should be mostly mechanical (replacing the arrays with repository calls) rather than a redesign.
-
-## Endpoints
-
-| Method | Path | Does |
+| Method | Path | Behavior |
 |---|---|---|
-| `POST` | `/requests` | Submit a new request (starts at `SUBMITTED`) |
-| `GET` | `/requests` | List all requests |
-| `GET` | `/requests/:id` | Get one request |
-| `GET` | `/requests/:id/history` | Get a request's full append-only status history |
-| `PATCH` | `/requests/:id/status` | Attempt a status transition — `{ "toStatus": "ASSIGNED", "changedBy": "user-id" }` |
+| `POST` | `/requests` | Submit a request |
+| `GET` | `/requests` | List own requests or the header-selected department queue |
+| `GET` | `/requests/:id` | Read one accessible request |
+| `GET` | `/requests/:id/history` | Read append-only status history |
+| `PATCH` | `/requests/:id/status` | Apply an allowed lifecycle transition |
+| `GET` / `POST` | `/requests/:id/comments` | Read or append request comments |
+| `GET` | `/requests/notifications` | List notifications for the header-selected user ID |
+| `PATCH` | `/requests/:id/reassign` | Reassign as a department admin; record assignment history |
+| `POST` | `/requests/intake` | Return an advisory intake candidate |
+| `POST` | `/requests/agent` | Use authorized, read-only request lookup tools |
 
-## Testing the two valid transitions + the one invalid one
+The headers shown in local examples and E2E tests are mock data, not proof of authentication. Do not expose this demo API as a production service.
 
-```bash
-# 1. Submit a request (starts at SUBMITTED)
-curl -X POST http://localhost:3000/requests -H "Content-Type: application/json" -d '{
-  "title": "Laptop won'\''t boot",
-  "description": "Blue screen on startup",
-  "category": "Hardware",
-  "priority": "High",
-  "departmentId": "IT",
-  "createdBy": "employee-1"
-}'
-# → copy the "id" from the response for the calls below
+## Remaining work from the docs
 
-# 2. Valid: SUBMITTED → ASSIGNED
-curl -X PATCH http://localhost:3000/requests/<id>/status -H "Content-Type: application/json" -d '{
-  "toStatus": "ASSIGNED", "changedBy": "it-staff-1"
-}'
-# → 200, status is now ASSIGNED
+1. Integrate the existing company login system and derive identity/role/department from verified claims.
+2. Add or connect a trusted user/department directory, then validate reassignment targets and manager escalation.
+3. Implement PostgreSQL migrations, foreign keys, and constraints from [ADR-001.md](../decisions/ADR-001.md).
+4. Complete staff/admin UI, employee search and filters, and department queue sorting.
+5. Add end-to-end acceptance coverage for the full documented workflow.
 
-# 3. Valid: ASSIGNED → IN_PROGRESS
-curl -X PATCH http://localhost:3000/requests/<id>/status -H "Content-Type: application/json" -d '{
-  "toStatus": "IN_PROGRESS", "changedBy": "it-staff-1"
-}'
-# → 200, status is now IN_PROGRESS
+## Validation
 
-# 4. Invalid: submit a NEW request, then try SUBMITTED → IN_PROGRESS directly
-curl -X PATCH http://localhost:3000/requests/<new-id>/status -H "Content-Type: application/json" -d '{
-  "toStatus": "IN_PROGRESS", "changedBy": "it-staff-1"
-}'
-# → 400 Bad Request: "Invalid transition: cannot move a request from SUBMITTED to IN_PROGRESS"
-```
-
-## Running it
-
-```bash
+```powershell
 cd backend
-npm install
-npm run start
+npm test
+npm run test:e2e
+npm run build
+
+cd ../frontend
+npm run build
 ```
-API runs on `http://localhost:3000`.

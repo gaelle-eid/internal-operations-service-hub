@@ -1,5 +1,9 @@
 # Data model: Internal Operations Service Hub
 
+## Implementation status
+
+This is the target domain model, not a description of the current database schema. The current demo persists request and event records but has no `User` or `Department` entities; identity and department IDs are mock strings supplied through unverified headers. PostgreSQL is configurable, but SQLite is the local default and the foreign keys/constraints below have not yet been implemented. See [workflow.md](workflow.md) for the current boundary. Use mock data only.
+
 ## Domain
 
 **Entities:**
