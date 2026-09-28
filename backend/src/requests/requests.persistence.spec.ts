@@ -10,6 +10,7 @@ import { RequestStatus } from './enums/request-status.enum';
 import { RequestsService } from './requests.service';
 import { NotificationService } from './notification.service';
 import { AuthGuard } from './auth.guard';
+import { getDatabaseConfig } from '../database.config';
 
 describe('request persistence integration', () => {
   let service: RequestsService;
@@ -31,6 +32,28 @@ describe('request persistence integration', () => {
 
     expect(guard.canActivate(validContext)).toBe(true);
     expect(() => guard.canActivate(invalidContext)).toThrow('x-user-id and x-user-role headers are required');
+  });
+
+  it('uses postgres settings when postgres env vars are configured', () => {
+    const previous = { ...process.env };
+    process.env.DB_TYPE = 'postgres';
+    process.env.DB_HOST = 'localhost';
+    process.env.DB_PORT = '5432';
+    process.env.DB_USERNAME = 'svc_user';
+    process.env.DB_PASSWORD = 'secret';
+    process.env.DB_NAME = 'service_hub';
+
+    try {
+      const config = getDatabaseConfig() as any;
+      expect(config.type).toBe('postgres');
+      expect(config.host).toBe('localhost');
+      expect(config.port).toBe(5432);
+      expect(config.username).toBe('svc_user');
+      expect(config.password).toBe('secret');
+      expect(config.database).toBe('service_hub');
+    } finally {
+      process.env = previous;
+    }
   });
 
   beforeEach(async () => {
