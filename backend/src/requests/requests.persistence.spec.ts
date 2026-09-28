@@ -1,3 +1,4 @@
+import { Logger } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
@@ -194,5 +195,36 @@ describe('request persistence integration', () => {
     expect(history[history.length - 1]).toMatchObject({ fromStatus: RequestStatus.RESOLVED, toStatus: RequestStatus.IN_PROGRESS, changedBy: 'employee-6' });
     const staffNotifications = await notificationService.listForUser('it-staff-1');
     expect(staffNotifications[0]).toMatchObject({ type: 'STATUS_CHANGE', requestId: request.id });
+  });
+
+  it('keeps submissions, status changes, comments and reassignments working when notifications fail', async () => {
+    jest.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined);
+    const failure = new Error('notification store down');
+    jest.spyOn(notificationService, 'notifyStatusChange').mockRejectedValue(failure);
+    jest.spyOn(notificationService, 'notifyComment').mockRejectedValue(failure);
+    jest.spyOn(notificationService, 'notifyReassignment').mockRejectedValue(failure);
+
+    const requester = { id: 'employee-8', role: 'employee' as const };
+    const staff = { id: 'it-staff-1', role: 'staff' as const, departmentId: 'IT' };
+    const request = await service.create({
+      title: 'Badge reader',
+      description: 'The badge reader is offline',
+      category: 'Hardware',
+      priority: 'Medium',
+      departmentId: 'IT',
+      createdBy: 'employee-8',
+    }, requester);
+
+    await expect(requestRepository.findOneByOrFail({ id: request.id })).resolves.toMatchObject({ status: RequestStatus.SUBMITTED });
+
+    const claimed = await service.transition(request.id, RequestStatus.ASSIGNED, 'it-staff-1', staff);
+    expect(claimed.status).toBe(RequestStatus.ASSIGNED);
+    await expect(service.addComment(request.id, 'employee-8', 'Still offline.', requester)).resolves.toMatchObject({ body: 'Still offline.' });
+    const reassigned = await service.reassign(request.id, 'it-staff-2', { id: 'it-admin-1', role: 'admin', departmentId: 'IT' });
+    expect(reassigned.assignedTo).toBe('it-staff-2');
+
+    const history = await service.getHistory(request.id, requester);
+    expect(history.map((entry) => entry.toStatus)).toEqual([RequestStatus.SUBMITTED, RequestStatus.ASSIGNED]);
+    jest.restoreAllMocks();
   });
 });

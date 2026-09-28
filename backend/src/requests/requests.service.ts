@@ -1,4 +1,4 @@
-import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { ForbiddenException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { randomUUID } from 'crypto';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
@@ -36,6 +36,8 @@ export type RequestActor = {
 
 @Injectable()
 export class RequestsService {
+  private readonly logger = new Logger(RequestsService.name);
+
   constructor(
     @InjectRepository(RequestEntity)
     private readonly requestRepository: Repository<RequestEntity>,
@@ -71,7 +73,7 @@ export class RequestsService {
     // Every request gets a StatusHistory entry from the moment it's
     // submitted, so the audit trail is complete from creation onward.
     await this.recordHistory(request.id, null, RequestStatus.SUBMITTED, dto.createdBy);
-    await this.notificationService.notifyStatusChange(request.id, dto.createdBy, 'NEW', RequestStatus.SUBMITTED);
+    await this.notifySafely(() => this.notificationService.notifyStatusChange(request.id, dto.createdBy, 'NEW', RequestStatus.SUBMITTED));
 
     return request;
   }
@@ -130,7 +132,7 @@ export class RequestsService {
     const recipientIds = new Set<string>([request.createdBy, request.assignedTo].filter(Boolean) as string[]);
     for (const recipientId of recipientIds) {
       if (recipientId !== authorId) {
-        await this.notificationService.notifyComment(requestId, recipientId, body.trim());
+        await this.notifySafely(() => this.notificationService.notifyComment(requestId, recipientId, body.trim()));
       }
     }
 
@@ -174,7 +176,7 @@ export class RequestsService {
       [newAssigneeId, `You have been assigned to request ${request.title}`],
     ]);
     for (const [userId, message] of notifications) {
-      await this.notificationService.notifyReassignment(id, userId, message);
+      await this.notifySafely(() => this.notificationService.notifyReassignment(id, userId, message));
     }
     return request;
   }
@@ -211,10 +213,21 @@ export class RequestsService {
 
     const recipientIds = new Set<string>([request.createdBy, request.assignedTo].filter(Boolean) as string[]);
     for (const recipientId of recipientIds) {
-      await this.notificationService.notifyStatusChange(id, recipientId, fromStatus, toStatus);
+      await this.notifySafely(() => this.notificationService.notifyStatusChange(id, recipientId, fromStatus, toStatus));
     }
 
     return request;
+  }
+
+  // Notifications are a side effect of a change that is already saved. If the
+  // notification store fails, the request change must not be lost or reported as
+  // failed (docs/architecture.md, failure scenarios).
+  private async notifySafely(send: () => Promise<unknown>): Promise<void> {
+    try {
+      await send();
+    } catch (error) {
+      this.logger.error(`Notification failed: ${error instanceof Error ? error.message : String(error)}`);
+    }
   }
 
   private async recordHistory(
