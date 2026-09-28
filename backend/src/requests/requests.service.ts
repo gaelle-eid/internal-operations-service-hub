@@ -11,7 +11,8 @@ import { RequestStatus } from './enums/request-status.enum';
 import { CreateRequestDto } from './dto/create-request.dto';
 import { InvalidTransitionException } from './exceptions/invalid-transition.exception';
 import { NotificationService } from './notification.service';
-import { getAuthMode, getMockActor, getMockStaffIds } from './mock-directory';
+import { getAuthMode } from './mock-directory';
+import { DirectoryService } from './directory.service';
 
 // The only statuses a request may legally move to next, keyed by its current
 // status. This is the single source of truth for the lifecycle rule in
@@ -50,6 +51,7 @@ export class RequestsService {
     @InjectRepository(AssignmentHistoryEntry)
     private readonly assignmentHistoryRepository: Repository<AssignmentHistoryEntry>,
     private readonly notificationService: NotificationService,
+    private readonly directoryService: DirectoryService,
   ) {}
 
   async create(dto: CreateRequestDto, actor: RequestActor): Promise<RequestEntity> {
@@ -74,13 +76,11 @@ export class RequestsService {
     // submitted, so the audit trail is complete from creation onward.
     await this.recordHistory(request.id, null, RequestStatus.SUBMITTED, dto.createdBy);
     await this.notifySafely(() => this.notificationService.notifyStatusChange(request.id, dto.createdBy, 'NEW', RequestStatus.SUBMITTED));
-    // Department staff are told about the new request (docs/architecture.md, flow 1). Only the mock
-    // directory can list staff today; OIDC mode has no directory yet (docs/workflow.md).
+    // Department staff are told about the new request (docs/architecture.md, flow 1). The staff list
+    // comes from the persisted directory. Only mock mode has registered users today; OIDC mode has no
+    // trusted directory yet (docs/workflow.md).
     if (getAuthMode() === 'mock') {
-      for (const staffId of getMockStaffIds(dto.departmentId)) {
-        if (staffId === dto.createdBy) continue;
-        await this.notifySafely(() => this.notificationService.notifyStatusChange(request.id, staffId, 'NEW', RequestStatus.SUBMITTED));
-      }
+      await this.notifyDepartmentStaff(request.id, dto.departmentId, dto.createdBy);
     }
 
     return request;
@@ -161,8 +161,8 @@ export class RequestsService {
       throw new ForbiddenException('Admins can only reassign requests in their own department');
     }
     if (getAuthMode() === 'mock') {
-      const mockAssignee = getMockActor(newAssigneeId);
-      if (!mockAssignee || mockAssignee.role !== 'staff' || mockAssignee.departmentId !== request.departmentId) {
+      const assignee = await this.directoryService.findUser(newAssigneeId);
+      if (!assignee || assignee.role !== 'staff' || assignee.departmentId !== request.departmentId) {
         throw new ForbiddenException('Assignee must be registered staff in the request department');
       }
     }
@@ -230,6 +230,18 @@ export class RequestsService {
   // Notifications are a side effect of a change that is already saved. If the
   // notification store fails, the request change must not be lost or reported as
   // failed (docs/architecture.md, failure scenarios).
+  // A failure listing or notifying staff must never undo a saved request (docs/architecture.md, Failure scenarios).
+  private async notifyDepartmentStaff(requestId: string, departmentId: string, requesterId: string): Promise<void> {
+    try {
+      for (const staffId of await this.directoryService.listStaffIds(departmentId)) {
+        if (staffId === requesterId) continue;
+        await this.notifySafely(() => this.notificationService.notifyStatusChange(requestId, staffId, 'NEW', RequestStatus.SUBMITTED));
+      }
+    } catch (error) {
+      this.logger.error(`Staff notification failed: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+
   private async notifySafely(send: () => Promise<unknown>): Promise<void> {
     try {
       await send();

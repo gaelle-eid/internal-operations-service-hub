@@ -12,6 +12,9 @@ import { RequestStatus } from './enums/request-status.enum';
 import { RequestsService } from './requests.service';
 import { NotificationService } from './notification.service';
 import { AuthGuard } from './auth.guard';
+import { DepartmentEntity } from './entities/department.entity';
+import { UserEntity } from './entities/user.entity';
+import { DirectoryService } from './directory.service';
 import { getDatabaseConfig } from '../database.config';
 
 describe('request persistence integration', () => {
@@ -21,6 +24,8 @@ describe('request persistence integration', () => {
   let requestRepository: Repository<RequestEntity>;
   let assignmentHistoryRepository: Repository<AssignmentHistoryEntry>;
   let statusHistoryRepository: Repository<StatusHistoryEntry>;
+  let userRepository: Repository<UserEntity>;
+  let directoryService: DirectoryService;
 
   it('uses postgres settings when postgres env vars are configured', () => {
     const previous = { ...process.env };
@@ -47,10 +52,10 @@ describe('request persistence integration', () => {
   beforeEach(async () => {
     const module = await Test.createTestingModule({
       imports: [
-        TypeOrmModule.forRoot({ type: 'sqlite', database: ':memory:', dropSchema: true, synchronize: true, entities: [RequestEntity, StatusHistoryEntry, CommentEntry, NotificationEntry, AssignmentHistoryEntry] }),
-        TypeOrmModule.forFeature([RequestEntity, StatusHistoryEntry, CommentEntry, NotificationEntry, AssignmentHistoryEntry]),
+        TypeOrmModule.forRoot({ type: 'sqlite', database: ':memory:', dropSchema: true, synchronize: true, entities: [RequestEntity, StatusHistoryEntry, CommentEntry, NotificationEntry, AssignmentHistoryEntry, DepartmentEntity, UserEntity] }),
+        TypeOrmModule.forFeature([RequestEntity, StatusHistoryEntry, CommentEntry, NotificationEntry, AssignmentHistoryEntry, DepartmentEntity, UserEntity]),
       ],
-      providers: [RequestsService, NotificationService],
+      providers: [RequestsService, NotificationService, DirectoryService],
     }).compile();
 
     service = module.get(RequestsService);
@@ -59,6 +64,10 @@ describe('request persistence integration', () => {
     requestRepository = module.get(getRepositoryToken(RequestEntity));
     assignmentHistoryRepository = module.get(getRepositoryToken(AssignmentHistoryEntry));
     statusHistoryRepository = module.get(getRepositoryToken(StatusHistoryEntry));
+    userRepository = module.get(getRepositoryToken(UserEntity));
+    directoryService = module.get(DirectoryService);
+    // Lifecycle hooks do not run in this bare module, so seed the demo directory explicitly.
+    await directoryService.seed();
   });
 
   it('persists a submitted request and its append-only history', async () => {
@@ -284,6 +293,55 @@ describe('request persistence integration', () => {
     } finally {
       if (previousMode === undefined) delete process.env.AUTH_MODE;
       else process.env.AUTH_MODE = previousMode;
+    }
+  });
+
+  it('reads staff from the persisted directory, not from fixtures', async () => {
+    await userRepository.save({ id: 'it-staff-9', name: 'IT Staff Nine', email: 'it-staff-9@example.com', role: 'staff', departmentId: 'IT' });
+    await userRepository.delete({ id: 'it-staff-2' });
+
+    const request = await service.create({
+      title: 'Monitor',
+      description: 'Second monitor needed',
+      category: 'Hardware',
+      priority: 'Low',
+      departmentId: 'IT',
+      createdBy: 'employee-9',
+    }, { id: 'employee-9', role: 'employee' });
+
+    const added = await notificationService.listForUser('it-staff-9');
+    const removed = await notificationService.listForUser('it-staff-2');
+    expect(added.some((notification) => notification.requestId === request.id)).toBe(true);
+    expect(removed.some((notification) => notification.requestId === request.id)).toBe(false);
+
+    const admin = { id: 'it-admin-1', role: 'admin' as const, departmentId: 'IT' };
+    const reassigned = await service.reassign(request.id, 'it-staff-9', admin);
+    expect(reassigned.assignedTo).toBe('it-staff-9');
+    await expect(service.reassign(request.id, 'it-staff-2', admin))
+      .rejects.toThrow('Assignee must be registered staff in the request department');
+    await expect(service.reassign(request.id, 'it-admin-1', admin))
+      .rejects.toThrow('Assignee must be registered staff in the request department');
+  });
+
+  it('still saves the submission when the directory lookup fails', async () => {
+    jest.spyOn(directoryService, 'listStaffIds').mockRejectedValue(new Error('directory unavailable'));
+    const loggerSpy = jest.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined);
+    try {
+      const request = await service.create({
+        title: 'Badge',
+        description: 'Badge does not open the door',
+        category: 'Access',
+        priority: 'Low',
+        departmentId: 'IT',
+        createdBy: 'employee-9',
+      }, { id: 'employee-9', role: 'employee' });
+
+      const stored = await requestRepository.findOneByOrFail({ id: request.id });
+      expect(stored.status).toBe(RequestStatus.SUBMITTED);
+      const requesterNotifications = await notificationService.listForUser('employee-9');
+      expect(requesterNotifications.filter((notification) => notification.requestId === request.id)).toHaveLength(1);
+    } finally {
+      loggerSpy.mockRestore();
     }
   });
 });

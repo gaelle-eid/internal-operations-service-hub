@@ -13,15 +13,19 @@ import { NotificationService } from './notification.service';
 import { AssignmentHistoryEntry } from './entities/assignment-history.entity';
 import { OidcAuthService } from './oidc-auth.service';
 import { AuthGuard } from './auth.guard';
+import { DepartmentEntity } from './entities/department.entity';
+import { UserEntity } from './entities/user.entity';
+import { DirectoryService } from './directory.service';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([RequestEntity, StatusHistoryEntry, CommentEntry, NotificationEntry, AssignmentHistoryEntry])],
+  imports: [TypeOrmModule.forFeature([RequestEntity, StatusHistoryEntry, CommentEntry, NotificationEntry, AssignmentHistoryEntry, DepartmentEntity, UserEntity])],
   controllers: [RequestsController],
   providers: [
     RequestsService,
     IntakeService,
     AgentService,
     NotificationService,
+    DirectoryService,
     OidcAuthService,
     AuthGuard,
     RequestyIntakeProvider,

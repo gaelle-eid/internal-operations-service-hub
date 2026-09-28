@@ -1,6 +1,8 @@
 import { UnauthorizedException } from '@nestjs/common';
 import { AuthGuard } from './auth.guard';
 import { OidcAuthService } from './oidc-auth.service';
+import { DirectoryService } from './directory.service';
+import { MOCK_USERS } from './mock-directory';
 
 const contextFor = (headers: Record<string, string>) => ({
   switchToHttp: () => ({ getRequest: () => ({ headers }) }),
@@ -10,6 +12,7 @@ describe('AuthGuard', () => {
   const originalAuthMode = process.env.AUTH_MODE;
   const originalNodeEnv = process.env.NODE_ENV;
   const oidcAuthService = { authenticate: jest.fn() } as unknown as OidcAuthService;
+  const directoryService = { findUser: async (id: string) => MOCK_USERS.find((user) => user.id === id) ?? null } as unknown as DirectoryService;
 
   afterEach(() => {
     jest.clearAllMocks();
@@ -25,7 +28,7 @@ describe('AuthGuard', () => {
     const request = { headers: { 'x-user-id': 'employee-1', 'x-user-role': 'employee' } };
     const context = { switchToHttp: () => ({ getRequest: () => request }) } as any;
 
-    await expect(new AuthGuard(oidcAuthService).canActivate(context)).resolves.toBe(true);
+    await expect(new AuthGuard(oidcAuthService, directoryService).canActivate(context)).resolves.toBe(true);
     expect(request).toMatchObject({ user: { id: 'employee-1', role: 'employee' } });
     expect(oidcAuthService.authenticate).not.toHaveBeenCalled();
   });
@@ -33,7 +36,7 @@ describe('AuthGuard', () => {
   it('rejects unknown mock identities and caller-selected elevated roles', async () => {
     process.env.AUTH_MODE = 'mock';
     process.env.NODE_ENV = 'development';
-    const guard = new AuthGuard(oidcAuthService);
+    const guard = new AuthGuard(oidcAuthService, directoryService);
 
     await expect(guard.canActivate(contextFor({
       'x-user-id': 'unregistered-user',
@@ -53,14 +56,14 @@ describe('AuthGuard', () => {
     const request = { headers: { 'x-user-id': 'it-staff-1', 'x-user-role': 'staff', 'x-department-id': 'HR' } };
     const context = { switchToHttp: () => ({ getRequest: () => request }) } as any;
 
-    await expect(new AuthGuard(oidcAuthService).canActivate(context)).rejects.toThrow('x-department-id does not match');
+    await expect(new AuthGuard(oidcAuthService, directoryService).canActivate(context)).rejects.toThrow('x-department-id does not match');
   });
 
   it('rejects mock mode in production even if it is explicitly enabled', async () => {
     process.env.AUTH_MODE = 'mock';
     process.env.NODE_ENV = 'production';
 
-    await expect(new AuthGuard(oidcAuthService).canActivate(contextFor({
+    await expect(new AuthGuard(oidcAuthService, directoryService).canActivate(contextFor({
       'x-user-id': 'forged-admin',
       'x-user-role': 'admin',
     }))).rejects.toThrow('Mock authentication is disabled in production');
@@ -70,7 +73,7 @@ describe('AuthGuard', () => {
     process.env.AUTH_MODE = 'oidc';
     process.env.NODE_ENV = 'development';
 
-    await expect(new AuthGuard(oidcAuthService).canActivate(contextFor({
+    await expect(new AuthGuard(oidcAuthService, directoryService).canActivate(contextFor({
       'x-user-id': 'forged-admin',
       'x-user-role': 'admin',
     }))).rejects.toBeInstanceOf(UnauthorizedException);
@@ -84,7 +87,7 @@ describe('AuthGuard', () => {
     const request = { headers: { authorization: 'Bearer signed-token', 'x-user-id': 'forged-admin', 'x-user-role': 'admin' } };
     const context = { switchToHttp: () => ({ getRequest: () => request }) } as any;
 
-    await expect(new AuthGuard(oidcAuthService).canActivate(context)).resolves.toBe(true);
+    await expect(new AuthGuard(oidcAuthService, directoryService).canActivate(context)).resolves.toBe(true);
     expect(oidcAuthService.authenticate).toHaveBeenCalledWith('signed-token');
     expect(request).toMatchObject({ user: { id: 'verified-user', role: 'employee' } });
   });

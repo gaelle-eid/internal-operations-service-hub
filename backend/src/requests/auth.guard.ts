@@ -1,11 +1,12 @@
 import { CanActivate, ExecutionContext, Injectable, UnauthorizedException } from '@nestjs/common';
 import { RequestActor } from './requests.service';
 import { OidcAuthService } from './oidc-auth.service';
-import { getAuthMode, getMockActor } from './mock-directory';
+import { getAuthMode } from './mock-directory';
+import { DirectoryService } from './directory.service';
 
 @Injectable()
 export class AuthGuard implements CanActivate {
-  constructor(private readonly oidcAuthService: OidcAuthService) {}
+  constructor(private readonly oidcAuthService: OidcAuthService, private readonly directoryService: DirectoryService) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
     const request = context.switchToHttp().getRequest();
@@ -16,7 +17,7 @@ export class AuthGuard implements CanActivate {
       if (process.env.NODE_ENV === 'production') {
         throw new UnauthorizedException('Mock authentication is disabled in production');
       }
-      request.user = this.mockActor(headers);
+      request.user = await this.mockActor(headers);
       return true;
     }
 
@@ -29,18 +30,19 @@ export class AuthGuard implements CanActivate {
     return true;
   }
 
-  private mockActor(headers: Record<string, string | undefined>): RequestActor {
+  private async mockActor(headers: Record<string, string | undefined>): Promise<RequestActor> {
     const userId = headers['x-user-id'];
     const role = headers['x-user-role'];
     if (!userId || !role || !['employee', 'staff', 'admin'].includes(role)) {
       throw new UnauthorizedException('Mock mode requires x-user-id and a valid x-user-role');
     }
-    const registeredActor = getMockActor(userId);
-    if (!registeredActor) throw new UnauthorizedException('Mock user is not registered');
-    if (role !== registeredActor.role) throw new UnauthorizedException('x-user-role does not match the registered mock user');
-    if (headers['x-department-id'] !== registeredActor.departmentId) {
+    const registeredUser = await this.directoryService.findUser(userId);
+    if (!registeredUser) throw new UnauthorizedException('Mock user is not registered');
+    if (role !== registeredUser.role) throw new UnauthorizedException('x-user-role does not match the registered mock user');
+    const departmentId = registeredUser.departmentId ?? undefined;
+    if (headers['x-department-id'] !== departmentId) {
       throw new UnauthorizedException('x-department-id does not match the registered mock user');
     }
-    return { ...registeredActor };
+    return departmentId ? { id: registeredUser.id, role: registeredUser.role, departmentId } : { id: registeredUser.id, role: registeredUser.role };
   }
 }
