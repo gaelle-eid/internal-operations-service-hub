@@ -22,7 +22,7 @@ This page describes the current code and distinguishes it from the target requir
 
 ## Current UI boundary
 
-The UI supports a local mock employee mode and a configurable OIDC login mode, plus request list/detail, intake form, and assistant. It does not yet render the comment or notification data, provide staff/admin queues or reassignment controls, or implement the documented employee search/filters and admin sorting. The actual login is not usable until company provider settings and claim mapping are configured in `.env` files.
+The employee UI supports local mock mode and configurable OIDC login, request list/detail, intake form, assistant, append-only status history, a visible comment thread with composer, and a recent notification feed polled every 10 seconds. It does not yet provide staff/admin queues or reassignment controls, employee search/filters, or admin sorting. The actual company login is not usable until provider settings and claim mapping are configured in `.env` files.
 
 ## API routes
 

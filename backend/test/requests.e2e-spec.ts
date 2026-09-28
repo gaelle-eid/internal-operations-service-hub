@@ -86,6 +86,24 @@ describe('requests API (e2e)', () => {
     }
   });
 
+  it('lists persisted notifications for the authenticated mock employee', async () => {
+    const headers = { 'x-user-id': 'employee-notifications-1', 'x-user-role': 'employee' };
+    const created = await request(app.getHttpServer())
+      .post('/requests')
+      .set(headers)
+      .send({ title: 'Mock notification test', description: 'Verify notification delivery', category: 'Other', priority: 'Low', departmentId: 'IT', createdBy: 'employee-notifications-1' })
+      .expect(201);
+
+    const response = await request(app.getHttpServer())
+      .get('/requests/notifications')
+      .set(headers)
+      .expect(200);
+
+    expect(response.body).toEqual(expect.arrayContaining([
+      expect.objectContaining({ requestId: created.body.id, type: 'STATUS_CHANGE' }),
+    ]));
+  });
+
   it('returns a bounded intake candidate without creating a request', async () => {
     const ready = await request(app.getHttpServer())
       .post('/requests/intake')

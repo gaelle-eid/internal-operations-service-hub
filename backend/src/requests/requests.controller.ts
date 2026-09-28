@@ -41,6 +41,11 @@ export class RequestsController {
     return this.requestsService.findAll(actor);
   }
 
+  @Get('notifications')
+  getNotifications(@CurrentActor() actor: RequestActor) {
+    return this.notificationService.listForUser(actor.id);
+  }
+
   @Get(':id')
   findOne(@Param('id') id: string, @CurrentActor() actor: RequestActor) {
     return this.requestsService.findOne(id, actor);
@@ -55,11 +60,6 @@ export class RequestsController {
   @Get(':id/comments')
   getComments(@Param('id') id: string, @CurrentActor() actor: RequestActor) {
     return this.requestsService.getComments(id, actor);
-  }
-
-  @Get('notifications')
-  getNotifications(@CurrentActor() actor: RequestActor) {
-    return this.notificationService.listForUser(actor.id);
   }
 
   @Post(':id/comments')
