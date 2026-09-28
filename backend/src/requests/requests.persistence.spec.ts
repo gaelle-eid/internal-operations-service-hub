@@ -243,4 +243,47 @@ describe('request persistence integration', () => {
     await expect(columnsOf('comments', 'IDX_comments_request')).resolves.toEqual(['requestId']);
     await expect(columnsOf('status_history', 'IDX_status_history_request')).resolves.toEqual(['requestId']);
   });
+
+  it('notifies the department staff, and only them, when a request is submitted', async () => {
+    const request = await service.create({
+      title: 'New laptop',
+      description: 'Need a laptop for a new hire',
+      category: 'Hardware',
+      priority: 'Medium',
+      departmentId: 'IT',
+      createdBy: 'employee-9',
+    }, { id: 'employee-9', role: 'employee' });
+
+    for (const staffId of ['it-staff-1', 'it-staff-2']) {
+      const notifications = await notificationService.listForUser(staffId);
+      expect(notifications.some((notification) => notification.requestId === request.id && notification.type === 'STATUS_CHANGE')).toBe(true);
+    }
+    for (const otherId of ['hr-staff-1', 'finance-staff-1', 'it-admin-1']) {
+      const notifications = await notificationService.listForUser(otherId);
+      expect(notifications.some((notification) => notification.requestId === request.id)).toBe(false);
+    }
+    const requesterNotifications = await notificationService.listForUser('employee-9');
+    expect(requesterNotifications.filter((notification) => notification.requestId === request.id)).toHaveLength(1);
+  });
+
+  it('does not invent department staff outside mock mode', async () => {
+    const previousMode = process.env.AUTH_MODE;
+    process.env.AUTH_MODE = 'oidc';
+    try {
+      const request = await service.create({
+        title: 'Access request',
+        description: 'Need access to a shared drive',
+        category: 'Access',
+        priority: 'Low',
+        departmentId: 'IT',
+        createdBy: 'employee-9',
+      }, { id: 'employee-9', role: 'employee' });
+
+      const staffNotifications = await notificationService.listForUser('it-staff-1');
+      expect(staffNotifications.some((notification) => notification.requestId === request.id)).toBe(false);
+    } finally {
+      if (previousMode === undefined) delete process.env.AUTH_MODE;
+      else process.env.AUTH_MODE = previousMode;
+    }
+  });
 });

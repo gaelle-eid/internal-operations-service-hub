@@ -16,6 +16,12 @@ export function getMockActor(userId: string): RequestActor | undefined {
   return MOCK_DIRECTORY[userId];
 }
 
+export function getMockStaffIds(departmentId: string): string[] {
+  return Object.values(MOCK_DIRECTORY)
+    .filter((actor) => actor.role === 'staff' && actor.departmentId === departmentId)
+    .map((actor) => actor.id);
+}
+
 export function getAuthMode(): 'mock' | 'oidc' | string {
   return process.env.AUTH_MODE ?? (process.env.NODE_ENV === 'test' ? 'mock' : 'oidc');
 }

@@ -11,7 +11,7 @@ import { RequestStatus } from './enums/request-status.enum';
 import { CreateRequestDto } from './dto/create-request.dto';
 import { InvalidTransitionException } from './exceptions/invalid-transition.exception';
 import { NotificationService } from './notification.service';
-import { getAuthMode, getMockActor } from './mock-directory';
+import { getAuthMode, getMockActor, getMockStaffIds } from './mock-directory';
 
 // The only statuses a request may legally move to next, keyed by its current
 // status. This is the single source of truth for the lifecycle rule in
@@ -74,6 +74,14 @@ export class RequestsService {
     // submitted, so the audit trail is complete from creation onward.
     await this.recordHistory(request.id, null, RequestStatus.SUBMITTED, dto.createdBy);
     await this.notifySafely(() => this.notificationService.notifyStatusChange(request.id, dto.createdBy, 'NEW', RequestStatus.SUBMITTED));
+    // Department staff are told about the new request (docs/architecture.md, flow 1). Only the mock
+    // directory can list staff today; OIDC mode has no directory yet (docs/workflow.md).
+    if (getAuthMode() === 'mock') {
+      for (const staffId of getMockStaffIds(dto.departmentId)) {
+        if (staffId === dto.createdBy) continue;
+        await this.notifySafely(() => this.notificationService.notifyStatusChange(request.id, staffId, 'NEW', RequestStatus.SUBMITTED));
+      }
+    }
 
     return request;
   }

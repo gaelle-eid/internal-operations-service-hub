@@ -176,4 +176,24 @@ describe('requests API (e2e)', () => {
     const reopened = await request(app.getHttpServer()).patch(transitionUrl).set(employeeHeaders).send({ toStatus: RequestStatus.IN_PROGRESS, changedBy: 'employee-1' }).expect(200);
     expect(reopened.body.status).toBe(RequestStatus.IN_PROGRESS);
   });
+
+  it('shows a newly submitted request in the department staff notifications', async () => {
+    const created = await request(app.getHttpServer())
+      .post('/requests')
+      .set({ 'x-user-id': 'employee-1', 'x-user-role': 'employee' })
+      .send({ title: 'Staff notice check', description: 'Staff should be told', category: 'Other', priority: 'Low', departmentId: 'IT', createdBy: 'employee-1' })
+      .expect(201);
+
+    const staffNotifications = await request(app.getHttpServer())
+      .get('/requests/notifications')
+      .set({ 'x-user-id': 'it-staff-2', 'x-user-role': 'staff', 'x-department-id': 'IT' })
+      .expect(200);
+    expect(staffNotifications.body.some((notification: { requestId: string }) => notification.requestId === created.body.id)).toBe(true);
+
+    const hrNotifications = await request(app.getHttpServer())
+      .get('/requests/notifications')
+      .set({ 'x-user-id': 'hr-staff-1', 'x-user-role': 'staff', 'x-department-id': 'HR' })
+      .expect(200);
+    expect(hrNotifications.body.some((notification: { requestId: string }) => notification.requestId === created.body.id)).toBe(false);
+  });
 });
