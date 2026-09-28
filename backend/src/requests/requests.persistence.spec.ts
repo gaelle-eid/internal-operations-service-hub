@@ -6,6 +6,7 @@ import { RequestEntity } from './entities/request.entity';
 import { StatusHistoryEntry } from './entities/status-history.entity';
 import { CommentEntry } from './entities/comment.entity';
 import { NotificationEntry } from './entities/notification.entity';
+import { AssignmentHistoryEntry } from './entities/assignment-history.entity';
 import { RequestStatus } from './enums/request-status.enum';
 import { RequestsService } from './requests.service';
 import { NotificationService } from './notification.service';
@@ -16,6 +17,8 @@ describe('request persistence integration', () => {
   let service: RequestsService;
   let notificationService: NotificationService;
   let requestRepository: Repository<RequestEntity>;
+  let assignmentHistoryRepository: Repository<AssignmentHistoryEntry>;
+  let statusHistoryRepository: Repository<StatusHistoryEntry>;
 
   it('requires authenticated user headers for all access', () => {
     const guard = new AuthGuard();
@@ -59,8 +62,8 @@ describe('request persistence integration', () => {
   beforeEach(async () => {
     const module = await Test.createTestingModule({
       imports: [
-        TypeOrmModule.forRoot({ type: 'sqlite', database: ':memory:', dropSchema: true, synchronize: true, entities: [RequestEntity, StatusHistoryEntry, CommentEntry, NotificationEntry] }),
-        TypeOrmModule.forFeature([RequestEntity, StatusHistoryEntry, CommentEntry, NotificationEntry]),
+        TypeOrmModule.forRoot({ type: 'sqlite', database: ':memory:', dropSchema: true, synchronize: true, entities: [RequestEntity, StatusHistoryEntry, CommentEntry, NotificationEntry, AssignmentHistoryEntry] }),
+        TypeOrmModule.forFeature([RequestEntity, StatusHistoryEntry, CommentEntry, NotificationEntry, AssignmentHistoryEntry]),
       ],
       providers: [RequestsService, NotificationService],
     }).compile();
@@ -68,6 +71,8 @@ describe('request persistence integration', () => {
     service = module.get(RequestsService);
     notificationService = module.get(NotificationService);
     requestRepository = module.get(getRepositoryToken(RequestEntity));
+    assignmentHistoryRepository = module.get(getRepositoryToken(AssignmentHistoryEntry));
+    statusHistoryRepository = module.get(getRepositoryToken(StatusHistoryEntry));
   });
 
   it('persists a submitted request and its append-only history', async () => {
@@ -160,6 +165,16 @@ describe('request persistence integration', () => {
     const reassigned = await service.reassign(request.id, 'it-staff-2', { id: 'it-admin-1', role: 'admin', departmentId: 'IT' });
 
     expect(reassigned.assignedTo).toBe('it-staff-2');
+    const requesterNotifications = await notificationService.listForUser('employee-4');
+    const assigneeNotifications = await notificationService.listForUser('it-staff-2');
+    expect(requesterNotifications.map((notification) => notification.type)).toContain('REASSIGNMENT');
+    expect(assigneeNotifications.map((notification) => notification.type)).toContain('REASSIGNMENT');
+    await expect(assignmentHistoryRepository.findOneBy({ requestId: request.id })).resolves.toMatchObject({
+      previousAssigneeId: null,
+      newAssigneeId: 'it-staff-2',
+      changedBy: 'it-admin-1',
+    });
+    await expect(statusHistoryRepository.countBy({ requestId: request.id })).resolves.toBe(1);
     await expect(service.reassign(request.id, 'it-staff-3', { id: 'it-staff-1', role: 'staff', departmentId: 'IT' }))
       .rejects.toThrow('Only department admins can reassign requests');
   });

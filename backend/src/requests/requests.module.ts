@@ -10,9 +10,10 @@ import { INTAKE_PROVIDER, RequestyIntakeProvider } from './intake/intake.provide
 import { AgentService } from './agent.service';
 import { NotificationEntry } from './entities/notification.entity';
 import { NotificationService } from './notification.service';
+import { AssignmentHistoryEntry } from './entities/assignment-history.entity';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([RequestEntity, StatusHistoryEntry, CommentEntry, NotificationEntry])],
+  imports: [TypeOrmModule.forFeature([RequestEntity, StatusHistoryEntry, CommentEntry, NotificationEntry, AssignmentHistoryEntry])],
   controllers: [RequestsController],
   providers: [
     RequestsService,

@@ -6,6 +6,7 @@ import { RequestEntity } from './entities/request.entity';
 import { StatusHistoryEntry } from './entities/status-history.entity';
 import { CommentEntry } from './entities/comment.entity';
 import { NotificationEntry } from './entities/notification.entity';
+import { AssignmentHistoryEntry } from './entities/assignment-history.entity';
 import { RequestStatus } from './enums/request-status.enum';
 import { CreateRequestDto } from './dto/create-request.dto';
 import { InvalidTransitionException } from './exceptions/invalid-transition.exception';
@@ -43,6 +44,8 @@ export class RequestsService {
     private readonly commentRepository: Repository<CommentEntry>,
     @InjectRepository(NotificationEntry)
     private readonly notificationRepository: Repository<NotificationEntry>,
+    @InjectRepository(AssignmentHistoryEntry)
+    private readonly assignmentHistoryRepository: Repository<AssignmentHistoryEntry>,
     private readonly notificationService: NotificationService,
   ) {}
 
@@ -147,10 +150,25 @@ export class RequestsService {
       throw new ForbiddenException('Admins can only reassign requests in their own department');
     }
 
+    const previousAssigneeId = request.assignedTo;
     request.assignedTo = newAssigneeId;
     await this.requestRepository.save(request);
-    await this.recordHistory(id, request.status, request.status, newAssigneeId);
-    await this.notificationService.notifyStatusChange(id, request.createdBy, 'REASSIGNED', request.status);
+    await this.assignmentHistoryRepository.save({
+      id: randomUUID(),
+      requestId: id,
+      previousAssigneeId,
+      newAssigneeId,
+      changedBy: actor.id,
+      changedAt: new Date(),
+    });
+
+    const notifications = new Map<string, string>([
+      [request.createdBy, `Request reassigned to ${newAssigneeId}`],
+      [newAssigneeId, `You have been assigned to request ${request.title}`],
+    ]);
+    for (const [userId, message] of notifications) {
+      await this.notificationService.notifyReassignment(id, userId, message);
+    }
     return request;
   }
 

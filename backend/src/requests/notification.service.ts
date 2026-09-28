@@ -41,4 +41,16 @@ export class NotificationService {
       readAt: null,
     });
   }
+
+  async notifyReassignment(requestId: string, userId: string, message: string): Promise<NotificationEntry> {
+    return this.notificationRepository.save({
+      id: randomUUID(),
+      userId,
+      requestId,
+      type: 'REASSIGNMENT',
+      message,
+      createdAt: new Date(),
+      readAt: null,
+    });
+  }
 }

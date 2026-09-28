@@ -12,7 +12,7 @@ export class NotificationEntry {
   requestId: string;
 
   @Column()
-  type: 'STATUS_CHANGE' | 'COMMENT';
+  type: 'STATUS_CHANGE' | 'COMMENT' | 'REASSIGNMENT';
 
   @Column('text')
   message: string;
