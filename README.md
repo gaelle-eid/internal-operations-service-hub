@@ -2,7 +2,7 @@
 
 v0.4 is a local demo of an internal Service Request flow with Requesty-powered advisory intake and a read-only assistant. Request records and related events are persisted in local SQLite. The frontend supports configurable OIDC login, and the API verifies configured OIDC Bearer tokens; the company tenant is not configured in this repository. Local demo mode uses mock identity (`employee-1`) and caller-supplied headers. Example IDs and test payloads are mock data. Do not enter real employee or confidential information. This is not yet a production deployment or an employee directory.
 
-The backend implements request validation, lifecycle transitions, comments, in-app notifications, admin reassignment, and append-only status and assignment history. The UI displays history, comments, and notifications and has mock-mode role switching for employee, department staff, and admin workflows. Trusted user/department records, company-specific identity setup, employee search/filtering, and manager escalation still remain. See [docs/workflow.md](docs/workflow.md) for the implementation boundary and remaining work.
+The backend implements request validation, lifecycle transitions, comments, in-app notifications, admin reassignment, and append-only status and assignment history. The UI displays history, comments, and notifications and has employee search/filters plus mock-mode role switching for employee, department staff, and admin workflows. Trusted user/department records, company-specific identity setup, and manager escalation still remain. See [docs/workflow.md](docs/workflow.md) for the implementation boundary and remaining work.
 
 ## Repository
 
