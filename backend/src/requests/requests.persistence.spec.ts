@@ -344,4 +344,81 @@ describe('request persistence integration', () => {
       loggerSpy.mockRestore();
     }
   });
+
+  it('lets a department admin escalate to a registered manager of the same department', async () => {
+    const request = await service.create({
+      title: 'Server outage',
+      description: 'The file server is down',
+      category: 'Hardware',
+      priority: 'High',
+      departmentId: 'IT',
+      createdBy: 'employee-4',
+    }, { id: 'employee-4', role: 'employee' });
+    const admin = { id: 'it-admin-1', role: 'admin' as const, departmentId: 'IT' };
+
+    const escalated = await service.escalate(request.id, 'it-manager-1', admin);
+
+    expect(escalated.assignedTo).toBe('it-manager-1');
+    await expect(assignmentHistoryRepository.findOneBy({ requestId: request.id })).resolves.toMatchObject({
+      previousAssigneeId: null,
+      newAssigneeId: 'it-manager-1',
+      changedBy: 'it-admin-1',
+    });
+    const managerNotifications = await notificationService.listForUser('it-manager-1');
+    const requesterNotifications = await notificationService.listForUser('employee-4');
+    expect(managerNotifications.some((notification) => notification.requestId === request.id && notification.type === 'REASSIGNMENT')).toBe(true);
+    expect(requesterNotifications.some((notification) => notification.requestId === request.id && notification.message.includes('escalated'))).toBe(true);
+
+    // The manager is now the assignee, so they can act on the request and see their own department queue.
+    const manager = { id: 'it-manager-1', role: 'manager' as const, departmentId: 'IT' };
+    const claimed = await service.transition(request.id, RequestStatus.ASSIGNED, 'it-manager-1', manager);
+    expect(claimed.status).toBe(RequestStatus.ASSIGNED);
+    expect((await service.findAll(manager)).some((item) => item.id === request.id)).toBe(true);
+  });
+
+  it('rejects escalation by staff, managers, other departments, and to anyone who is not a same-department manager', async () => {
+    const request = await service.create({
+      title: 'Licence renewal',
+      description: 'Renew the design licence',
+      category: 'Software',
+      priority: 'Low',
+      departmentId: 'IT',
+      createdBy: 'employee-4',
+    }, { id: 'employee-4', role: 'employee' });
+    const admin = { id: 'it-admin-1', role: 'admin' as const, departmentId: 'IT' };
+
+    await expect(service.escalate(request.id, 'it-manager-1', { id: 'it-staff-1', role: 'staff', departmentId: 'IT' }))
+      .rejects.toThrow('Only department admins can escalate requests');
+    await expect(service.escalate(request.id, 'it-manager-1', { id: 'it-manager-1', role: 'manager', departmentId: 'IT' }))
+      .rejects.toThrow('Only department admins can escalate requests');
+    await expect(service.escalate(request.id, 'hr-manager-1', { id: 'hr-admin-1', role: 'admin', departmentId: 'HR' }))
+      .rejects.toThrow('You are not allowed to access this department request');
+    await expect(service.escalate(request.id, 'hr-manager-1', admin))
+      .rejects.toThrow('Escalation target must be a registered manager in the request department');
+    await expect(service.escalate(request.id, 'it-staff-1', admin))
+      .rejects.toThrow('Escalation target must be a registered manager in the request department');
+    await expect(service.escalate(request.id, 'unknown-manager', admin))
+      .rejects.toThrow('Escalation target must be a registered manager in the request department');
+    await expect(assignmentHistoryRepository.countBy({ requestId: request.id })).resolves.toBe(0);
+  });
+
+  it('refuses manager escalation outside mock mode because there is no trusted directory', async () => {
+    const request = await service.create({
+      title: 'VPN token',
+      description: 'Token expired',
+      category: 'Access',
+      priority: 'Low',
+      departmentId: 'IT',
+      createdBy: 'employee-4',
+    }, { id: 'employee-4', role: 'employee' });
+    const previousMode = process.env.AUTH_MODE;
+    process.env.AUTH_MODE = 'oidc';
+    try {
+      await expect(service.escalate(request.id, 'it-manager-1', { id: 'it-admin-1', role: 'admin', departmentId: 'IT' }))
+        .rejects.toThrow('Manager escalation needs a trusted directory');
+    } finally {
+      if (previousMode === undefined) delete process.env.AUTH_MODE;
+      else process.env.AUTH_MODE = previousMode;
+    }
+  });
 });

@@ -33,7 +33,7 @@ export class AuthGuard implements CanActivate {
   private async mockActor(headers: Record<string, string | undefined>): Promise<RequestActor> {
     const userId = headers['x-user-id'];
     const role = headers['x-user-role'];
-    if (!userId || !role || !['employee', 'staff', 'admin'].includes(role)) {
+    if (!userId || !role || !['employee', 'staff', 'manager', 'admin'].includes(role)) {
       throw new UnauthorizedException('Mock mode requires x-user-id and a valid x-user-role');
     }
     const registeredUser = await this.directoryService.findUser(userId);

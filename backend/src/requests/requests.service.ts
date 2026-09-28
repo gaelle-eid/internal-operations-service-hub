@@ -31,7 +31,7 @@ export const VALID_TRANSITIONS: Record<RequestStatus, RequestStatus[]> = {
 
 export type RequestActor = {
   id: string;
-  role: 'employee' | 'staff' | 'admin';
+  role: 'employee' | 'staff' | 'manager' | 'admin';
   departmentId?: string;
 };
 
@@ -167,12 +167,57 @@ export class RequestsService {
       }
     }
 
+    return this.applyAssignment(
+      request,
+      newAssigneeId,
+      actor,
+      `Request reassigned to ${newAssigneeId}`,
+      `You have been assigned to request ${request.title}`,
+    );
+  }
+
+  // Escalation (docs/data-model.md, authorization rules): only a department admin, only inside their own
+  // department, and only to a manager registered in the persisted directory for that department. Managers
+  // exist only in the directory, which is mock-mode only today (docs/workflow.md), so OIDC mode refuses.
+  async escalate(id: string, managerId: string, actor: RequestActor): Promise<RequestEntity> {
+    const request = await this.findOne(id, actor);
+    if (actor.role !== 'admin') {
+      throw new ForbiddenException('Only department admins can escalate requests');
+    }
+    if (request.departmentId !== actor.departmentId) {
+      throw new ForbiddenException('Admins can only escalate requests in their own department');
+    }
+    if (getAuthMode() !== 'mock') {
+      throw new ForbiddenException('Manager escalation needs a trusted directory, which is not available in this authentication mode');
+    }
+    const manager = await this.directoryService.findUser(managerId);
+    if (!manager || manager.role !== 'manager' || manager.departmentId !== request.departmentId) {
+      throw new ForbiddenException('Escalation target must be a registered manager in the request department');
+    }
+    return this.applyAssignment(
+      request,
+      managerId,
+      actor,
+      `Request escalated to manager ${managerId}`,
+      `A request has been escalated to you: ${request.title}`,
+    );
+  }
+
+  // Shared by reassignment and escalation: both are an assignee change, recorded append-only in
+  // AssignmentHistory with the acting admin, and both tell the requester and the new assignee.
+  private async applyAssignment(
+    request: RequestEntity,
+    newAssigneeId: string,
+    actor: RequestActor,
+    requesterMessage: string,
+    assigneeMessage: string,
+  ): Promise<RequestEntity> {
     const previousAssigneeId = request.assignedTo;
     request.assignedTo = newAssigneeId;
     await this.requestRepository.save(request);
     await this.assignmentHistoryRepository.save({
       id: randomUUID(),
-      requestId: id,
+      requestId: request.id,
       previousAssigneeId,
       newAssigneeId,
       changedBy: actor.id,
@@ -180,11 +225,11 @@ export class RequestsService {
     });
 
     const notifications = new Map<string, string>([
-      [request.createdBy, `Request reassigned to ${newAssigneeId}`],
-      [newAssigneeId, `You have been assigned to request ${request.title}`],
+      [request.createdBy, requesterMessage],
+      [newAssigneeId, assigneeMessage],
     ]);
     for (const [userId, message] of notifications) {
-      await this.notifySafely(() => this.notificationService.notifyReassignment(id, userId, message));
+      await this.notifySafely(() => this.notificationService.notifyReassignment(request.id, userId, message));
     }
     return request;
   }

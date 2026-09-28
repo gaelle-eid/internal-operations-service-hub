@@ -71,7 +71,7 @@ export class OidcAuthService {
     for (const claim of values) {
       if (typeof claim !== 'string') continue;
       const mapped = mapping[claim] ?? claim;
-      if (mapped === 'employee' || mapped === 'staff' || mapped === 'admin') return mapped;
+      if (mapped === 'employee' || mapped === 'staff' || mapped === 'manager' || mapped === 'admin') return mapped;
     }
     return undefined;
   }
@@ -83,7 +83,7 @@ export class OidcAuthService {
       const parsed: unknown = JSON.parse(raw);
       if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return {};
       return Object.fromEntries(Object.entries(parsed).filter((entry): entry is [string, RequestActor['role']] =>
-        entry[1] === 'employee' || entry[1] === 'staff' || entry[1] === 'admin'));
+        entry[1] === 'employee' || entry[1] === 'staff' || entry[1] === 'manager' || entry[1] === 'admin'));
     } catch {
       throw new UnauthorizedException('OIDC_ROLE_MAP must be a JSON object mapping trusted role values');
     }

@@ -196,4 +196,31 @@ describe('requests API (e2e)', () => {
       .expect(200);
     expect(hrNotifications.body.some((notification: { requestId: string }) => notification.requestId === created.body.id)).toBe(false);
   });
+
+  it('lets a department admin escalate to a manager and keeps everyone else out', async () => {
+    const created = await request(app.getHttpServer())
+      .post('/requests')
+      .set({ 'x-user-id': 'employee-1', 'x-user-role': 'employee' })
+      .send({ title: 'Escalation check', description: 'Needs a manager', category: 'Other', priority: 'High', departmentId: 'IT', createdBy: 'employee-1' })
+      .expect(201);
+    const escalateUrl = `/requests/${created.body.id}/escalate`;
+    const itAdmin = { 'x-user-id': 'it-admin-1', 'x-user-role': 'admin', 'x-department-id': 'IT' };
+
+    await request(app.getHttpServer()).patch(escalateUrl).set({ 'x-user-id': 'it-staff-1', 'x-user-role': 'staff', 'x-department-id': 'IT' }).send({ managerId: 'it-manager-1' }).expect(403);
+    await request(app.getHttpServer()).patch(escalateUrl).set({ 'x-user-id': 'hr-admin-1', 'x-user-role': 'admin', 'x-department-id': 'HR' }).send({ managerId: 'hr-manager-1' }).expect(403);
+    await request(app.getHttpServer()).patch(escalateUrl).set(itAdmin).send({ managerId: 'it-staff-2' }).expect(403);
+    await request(app.getHttpServer()).patch(escalateUrl).set(itAdmin).send({ managerId: 'hr-manager-1' }).expect(403);
+
+    const escalated = await request(app.getHttpServer()).patch(escalateUrl).set(itAdmin).send({ managerId: 'it-manager-1' }).expect(200);
+    expect(escalated.body.assignedTo).toBe('it-manager-1');
+
+    const managerHeaders = { 'x-user-id': 'it-manager-1', 'x-user-role': 'manager', 'x-department-id': 'IT' };
+    await request(app.getHttpServer()).get(`/requests/${created.body.id}`).set(managerHeaders).expect(200);
+    await request(app.getHttpServer())
+      .patch(`/requests/${created.body.id}/status`)
+      .set(managerHeaders)
+      .send({ toStatus: RequestStatus.ASSIGNED, changedBy: 'it-manager-1' })
+      .expect(200);
+    await request(app.getHttpServer()).patch(escalateUrl).set(managerHeaders).send({ managerId: 'it-manager-1' }).expect(403);
+  });
 });

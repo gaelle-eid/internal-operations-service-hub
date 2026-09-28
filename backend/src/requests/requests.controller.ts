@@ -76,6 +76,12 @@ export class RequestsController {
     return this.requestsService.reassign(id, body.assignedTo, actor);
   }
 
+  // Escalate to a manager of the same department; department admins only.
+  @Patch(':id/escalate')
+  escalate(@Param('id') id: string, @Body() body: { managerId: string }, @CurrentActor() actor: RequestActor) {
+    return this.requestsService.escalate(id, body.managerId, actor);
+  }
+
   // One generic transition endpoint rather than one per status, so the
   // lifecycle can grow (WAITING_ON_REQUESTER, RESOLVED, CLOSED) without
   // adding new routes — only the VALID_TRANSITIONS map in the service

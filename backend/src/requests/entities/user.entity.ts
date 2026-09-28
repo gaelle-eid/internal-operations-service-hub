@@ -15,7 +15,7 @@ export class UserEntity {
   email: string;
 
   @Column({ type: 'text' })
-  role: 'employee' | 'staff' | 'admin';
+  role: 'employee' | 'staff' | 'manager' | 'admin';
 
   @Column({ type: 'text', nullable: true })
   departmentId: string | null;
